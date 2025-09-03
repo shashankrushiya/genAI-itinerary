@@ -1,0 +1,5 @@
+fastapi
+uvicorn
+google-generativeai
+firebase-admin
+fastapi[all]
