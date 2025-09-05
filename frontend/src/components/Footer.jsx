@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { MapPin, Mail, Phone, Heart } from 'lucide-react';
+import { Mail, Heart, Github, Linkedin } from 'lucide-react';
 
 const Footer = () => {
   return (
@@ -16,8 +16,9 @@ const Footer = () => {
           >
             <h3 className="text-2xl font-semibold text-white mb-4 tracking-tight">GenItinerary</h3>
             <p className="text-white/70 mb-6 max-w-md">
-              AI-powered travel planning that creates personalized itineraries 
-              tailored to your interests, budget, and travel style.
+              Plan smarter, not harder. GenItinerary helps you sketch a trip in minutes,
+              refine days with smart suggestions, and export or share with one click.
+              A clean, fast, dark UI keeps the focus on your adventure.
             </p>
             <div className="flex items-center space-x-2 text-gray-400">
               <Heart size={16} className="text-red-500" />
@@ -34,10 +35,9 @@ const Footer = () => {
           >
             <h4 className="text-lg font-semibold mb-4 text-white">Quick Links</h4>
             <ul className="space-y-2">
-              <li><a href="#features" className="text-white/70 hover:text-white transition-colors">Features</a></li>
-              <li><a href="#demo" className="text-white/70 hover:text-white transition-colors">Demo</a></li>
-              <li><a href="#about" className="text-white/70 hover:text-white transition-colors">About</a></li>
-              <li><a href="#contact" className="text-white/70 hover:text-white transition-colors">Contact</a></li>
+              <li><a href="/#features" className="text-white/70 hover:text-white transition-colors">Features</a></li>
+              <li><a href="/#demo" className="text-white/70 hover:text-white transition-colors">Demo</a></li>
+              <li><a href="/#about" className="text-white/70 hover:text-white transition-colors">About</a></li>
             </ul>
           </motion.div>
 
@@ -50,18 +50,18 @@ const Footer = () => {
           >
             <h4 className="text-lg font-semibold mb-4">Contact</h4>
             <div className="space-y-3">
-              <div className="flex items-center space-x-3">
-                <Mail size={16} className="text-primary-400" />
-                <span className="text-gray-300">demo@genitinerary.com</span>
-              </div>
-              <div className="flex items-center space-x-3">
-                <Phone size={16} className="text-primary-400" />
-                <span className="text-gray-300">+91-1234567890</span>
-              </div>
-              <div className="flex items-center space-x-3">
-                <MapPin size={16} className="text-primary-400" />
-                <span className="text-gray-300">Bengaluru, IND</span>
-              </div>
+              <a href="mailto:shashankrushiya@gmail.com" className="group flex items-center space-x-3 text-white/70 hover:text-white transition-colors">
+                <Mail size={18} className="text-white/60 group-hover:text-white transition-colors" />
+                <span>shashankrushiya@gmail.com</span>
+              </a>
+              <a href="https://www.linkedin.com/in/rushiyashashank/" target="_blank" rel="noreferrer" className="group flex items-center space-x-3 text-white/70 hover:text-white transition-colors">
+                <Linkedin size={18} className="text-white/60 group-hover:text-white transition-colors" />
+                <span>linkedin.com/in/rushiyashashank</span>
+              </a>
+              <a href="https://github.com/shashankrushiya" target="_blank" rel="noreferrer" className="group flex items-center space-x-3 text-white/70 hover:text-white transition-colors">
+                <Github size={18} className="text-white/60 group-hover:text-white transition-colors" />
+                <span>github.com/shashankrushiya</span>
+              </a>
             </div>
           </motion.div>
         </div>

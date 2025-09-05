@@ -6,6 +6,8 @@ from pydantic import BaseModel
 from genai_helper import generate_itinerary
 from datetime import datetime
 from auth_middleware import get_current_user
+import httpx
+from typing import Optional, List, Dict, Any
 
 # Pydantic model for a new user
 class UserCreate(BaseModel):
@@ -148,3 +150,134 @@ async def create_and_save_itinerary(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error generating or saving itinerary: {e}")
+
+
+# -------------- Live Constraints (Weather / Events / Alerts) --------------
+
+WEATHER_CODE_MAP = {
+    0: "Clear sky",
+    1: "Mainly clear",
+    2: "Partly cloudy",
+    3: "Overcast",
+    45: "Fog",
+    48: "Depositing rime fog",
+    51: "Light drizzle",
+    53: "Drizzle",
+    55: "Dense drizzle",
+    61: "Slight rain",
+    63: "Rain",
+    65: "Heavy rain",
+    71: "Slight snow",
+    73: "Snow",
+    75: "Heavy snow",
+    80: "Rain showers",
+    81: "Rain showers",
+    82: "Violent rain showers",
+    95: "Thunderstorm",
+}
+
+async def _geocode_destination(destination: str) -> Optional[Dict[str, Any]]:
+    """Geocode a destination name to lat/lon using Open‑Meteo's free API."""
+    url = "https://geocoding-api.open-meteo.com/v1/search"
+    params = {"name": destination, "count": 1, "language": "en", "format": "json"}
+    async with httpx.AsyncClient(timeout=10) as client:
+        r = await client.get(url, params=params)
+        if r.status_code != 200:
+            return None
+        data = r.json()
+        results = data.get("results") or []
+        return results[0] if results else None
+
+async def _fetch_weather(lat: float, lon: float, days: int) -> List[Dict[str, Any]]:
+    """Fetch a simple multi‑day forecast from Open‑Meteo."""
+    url = "https://api.open-meteo.com/v1/forecast"
+    params = {
+        "latitude": lat,
+        "longitude": lon,
+        "daily": "weathercode,temperature_2m_max,temperature_2m_min,precipitation_probability_mean",
+        "forecast_days": max(1, min(days, 16)),
+        "timezone": "auto",
+    }
+    async with httpx.AsyncClient(timeout=10) as client:
+        r = await client.get(url, params=params)
+        r.raise_for_status()
+        d = r.json().get("daily", {})
+        dates = d.get("time", [])
+        codes = d.get("weathercode", [])
+        tmax = d.get("temperature_2m_max", [])
+        tmin = d.get("temperature_2m_min", [])
+        precip = d.get("precipitation_probability_mean", [])
+        out = []
+        for i in range(min(len(dates), days)):
+            code = codes[i] if i < len(codes) else None
+            out.append({
+                "date": dates[i],
+                "summary": WEATHER_CODE_MAP.get(code, "Weather"),
+                "high_c": tmax[i] if i < len(tmax) else None,
+                "low_c": tmin[i] if i < len(tmin) else None,
+                "precip_prob": precip[i] if i < len(precip) else None,
+            })
+        return out
+
+def _mock_events(destination: str, days: int) -> List[List[Dict[str, Any]]]:
+    """Simple placeholder events per day. Replace with real provider later."""
+    samples = [
+        {"name": "Street food market", "time": "18:00", "location": destination},
+        {"name": "Cultural performance", "time": "20:00", "location": destination},
+        {"name": "Local walking tour", "time": "10:00", "location": destination},
+    ]
+    return [[samples[i % len(samples)]] for i in range(days)]
+
+@app.get("/constraints")
+async def get_live_constraints(destination: str, duration: int = 5):
+    """
+    Returns live constraints to augment an itinerary:
+    - Daily weather (Open‑Meteo)
+    - Placeholder events and basic advisories (mock)
+
+    This endpoint avoids requiring API keys and can be swapped for
+    production providers later (e.g., weather, events, places/closures).
+    """
+    try:
+        geo = await _geocode_destination(destination)
+        days = max(1, min(duration, 16))
+
+        weather = []
+        if geo:
+            weather = await _fetch_weather(geo["latitude"], geo["longitude"], days)
+
+        # Mock events and basic advisories for now
+        events = _mock_events(destination, days)
+        alerts = [
+            [] for _ in range(days)
+        ]
+
+        return {
+            "destination": destination,
+            "generated_at": datetime.utcnow().isoformat() + "Z",
+            "days": [
+                {
+                    "day": i + 1,
+                    "weather": weather[i] if i < len(weather) else None,
+                    "events": events[i],
+                    "alerts": alerts[i],
+                }
+                for i in range(days)
+            ],
+            "sources": {
+                "weather": "open-meteo",
+                "events": "mock",
+                "alerts": "mock"
+            }
+        }
+    except httpx.HTTPError as e:
+        # Graceful degradation
+        return {
+            "destination": destination,
+            "generated_at": datetime.utcnow().isoformat() + "Z",
+            "days": [
+                {"day": i + 1, "weather": None, "events": [], "alerts": []}
+                for i in range(max(1, min(duration, 7)))
+            ],
+            "error": str(e)
+        }

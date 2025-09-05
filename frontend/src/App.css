@@ -8,20 +8,29 @@ html {
   scroll-behavior: smooth;
 }
 
-/* Custom scrollbar */
+/* Custom scrollbar (dark theme) */
+/* WebKit browsers */
 ::-webkit-scrollbar {
-  width: 8px;
+  width: 10px;
+  height: 10px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #f1f1f1;
+  background: #0f0f0f; /* match dark background */
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #3b82f6;
-  border-radius: 4px;
+  background: #4b5563; /* neutral gray */
+  border-radius: 8px;
+  border: 2px solid #0f0f0f; /* creates gap for dark track */
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #2563eb;
+  background: #6b7280; /* slightly lighter on hover */
+}
+
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #4b5563 #0f0f0f; /* thumb color, track color */
 }

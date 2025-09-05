@@ -104,5 +104,22 @@ export async function getUserTrips(email, token) {
   }
 }
 
+export async function getLiveConstraints(destination, duration) {
+  try {
+    const url = new URL(`${API_BASE_URL}/constraints`);
+    url.searchParams.set('destination', destination);
+    url.searchParams.set('duration', String(duration));
+    const res = await fetch(url.toString(), {
+      method: 'GET',
+      headers: { 'Accept': 'application/json' },
+      credentials: 'include'
+    });
+    return await handleResponse(res);
+  } catch (error) {
+    if (error instanceof APIError) throw error;
+    throw new APIError('Network error: Unable to fetch live constraints', 0, null);
+  }
+}
+
 // Export error class for use in components
 export { APIError };

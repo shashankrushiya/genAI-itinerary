@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { 
   Calendar, 
@@ -15,6 +15,8 @@ import {
   Copy
 } from 'lucide-react';
 import { fadeInUp, staggerContainer } from '../lib/motion';
+import LoadingSpinner from './LoadingSpinner';
+import { getLiveConstraints } from '../lib/api';
 
 const ItineraryDisplay = ({ itinerary, tripDetails, onSave, onExport, onShare }) => {
   const [editableItinerary, setEditableItinerary] = useState(itinerary || []);
@@ -22,6 +24,9 @@ const ItineraryDisplay = ({ itinerary, tripDetails, onSave, onExport, onShare })
   const [editingActivity, setEditingActivity] = useState(null);
   const [newActivity, setNewActivity] = useState({ name: '', description: '', estimated_cost: '' });
   const [showAddActivity, setShowAddActivity] = useState({});
+  const [constraints, setConstraints] = useState(null);
+  const [constraintsLoading, setConstraintsLoading] = useState(false);
+  const [constraintsError, setConstraintsError] = useState('');
 
   const handleEditDay = (dayIndex) => {
     setEditingDay(editingDay === dayIndex ? null : dayIndex);
@@ -91,6 +96,28 @@ const ItineraryDisplay = ({ itinerary, tripDetails, onSave, onExport, onShare })
     // You could add a toast notification here
   };
 
+  // Fetch live constraints when trip details change
+  useEffect(() => {
+    let canceled = false;
+    async function loadConstraints() {
+      if (!tripDetails?.destination || !tripDetails?.duration) return;
+      try {
+        setConstraintsLoading(true);
+        setConstraintsError('');
+        const data = await getLiveConstraints(tripDetails.destination, tripDetails.duration);
+        if (!canceled) setConstraints(data);
+      } catch (e) {
+        if (!canceled) setConstraintsError('Unable to load live updates right now.');
+      } finally {
+        if (!canceled) setConstraintsLoading(false);
+      }
+    }
+    loadConstraints();
+    return () => {
+      canceled = true;
+    };
+  }, [tripDetails?.destination, tripDetails?.duration]);
+
   return (
     <div className="max-w-6xl mx-auto p-6">
       {/* Header with Trip Details */}
@@ -156,6 +183,48 @@ const ItineraryDisplay = ({ itinerary, tripDetails, onSave, onExport, onShare })
             <span className="text-sm">{tripDetails?.interests?.join(', ')}</span>
           </div>
         </div>
+      </motion.div>
+
+      {/* Live Constraints */}
+      <motion.div
+        variants={fadeInUp}
+        initial="initial"
+        animate="animate"
+        className="bg-black rounded-2xl p-6 text-white mb-8 border border-white/10"
+      >
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-xl font-semibold">Live Updates</h3>
+          {constraintsLoading && <LoadingSpinner size={20} text="" />}
+        </div>
+        {!constraintsLoading && constraintsError && (
+          <p className="text-red-300">{constraintsError}</p>
+        )}
+        {!constraintsLoading && constraints && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {constraints.days.map((d) => (
+              <div key={d.day} className="bg-white/5 rounded-lg p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-white/80 font-medium">Day {d.day}</span>
+                  {d.weather && (
+                    <span className="text-white/70 text-sm">
+                      {d.weather.summary} • {d.weather.low_c}–{d.weather.high_c}°C • {d.weather.precip_prob}% rain
+                    </span>
+                  )}
+                </div>
+                {d.events && d.events.length > 0 && (
+                  <div className="text-white/70 text-sm">
+                    <span className="font-medium">Events:</span> {d.events.map(e => e.name).join(', ')}
+                  </div>
+                )}
+                {d.alerts && d.alerts.length > 0 && (
+                  <div className="text-red-300 text-sm mt-1">
+                    <span className="font-medium">Alerts:</span> {d.alerts.join(', ')}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </motion.div>
 
       {/* Itinerary Days */}

@@ -99,12 +99,12 @@ const AuthSidePanel = ({ isOpen, onClose, mode, onModeChange, onAuthSuccess }) =
             onClick={onClose}
           />
 
-          {/* Panel */}
+          {/* Panel - always slides in from the right for consistency */}
           <motion.div
-            className={`fixed top-0 ${mode === 'signup' ? 'left-0' : 'right-0'} h-full w-full max-w-md bg-black border-l border-white/10 shadow-2xl z-50`}
-            initial={{ x: mode === 'signup' ? '-100%' : '100%' }}
+            className={`fixed top-0 right-0 h-full w-full max-w-md bg-black border-l border-white/10 shadow-2xl z-50`}
+            initial={{ x: '100%' }}
             animate={{ x: 0 }}
-            exit={{ x: mode === 'signup' ? '-100%' : '100%' }}
+            exit={{ x: '100%' }}
             transition={{ type: 'spring', damping: 25, stiffness: 200 }}
           >
             <div className="flex flex-col h-full">
@@ -152,7 +152,7 @@ const AuthSidePanel = ({ isOpen, onClose, mode, onModeChange, onAuthSuccess }) =
                   )}
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm font-medium text-white/80 mb-2">
                       Email
                     </label>
                     <div className="relative">
@@ -162,7 +162,7 @@ const AuthSidePanel = ({ isOpen, onClose, mode, onModeChange, onAuthSuccess }) =
                         name="email"
                         value={formData.email}
                         onChange={handleInputChange}
-                        className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                        className="w-full pl-10 pr-4 py-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/50 focus:ring-2 focus:ring-white/50 focus:border-white/50"
                         placeholder="Enter your email"
                         required
                       />
@@ -170,7 +170,7 @@ const AuthSidePanel = ({ isOpen, onClose, mode, onModeChange, onAuthSuccess }) =
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm font-medium text-white/80 mb-2">
                       Password
                     </label>
                     <div className="relative">
@@ -180,7 +180,7 @@ const AuthSidePanel = ({ isOpen, onClose, mode, onModeChange, onAuthSuccess }) =
                         name="password"
                         value={formData.password}
                         onChange={handleInputChange}
-                        className="w-full pl-10 pr-12 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                        className="w-full pl-10 pr-12 py-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/50 focus:ring-2 focus:ring-white/50 focus:border-white/50"
                         placeholder="Enter your password"
                         required
                       />

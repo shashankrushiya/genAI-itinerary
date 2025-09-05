@@ -4,7 +4,16 @@ import { Calendar, MapPin, Clock, DollarSign, Lock } from 'lucide-react';
 import { demoItinerary } from '../lib/demoData';
 import { staggerContainer, fadeInUp } from '../lib/motion';
 
-const DemoItinerary = ({ onGetStartedClick }) => {
+// Format demo costs without any currency symbol
+const formatCostPlain = (cost) => {
+  if (!cost) return '';
+  const str = String(cost).trim();
+  // Strip any currency symbols/letters; keep digits, comma, period
+  const numeric = str.replace(/[^0-9.,]/g, '');
+  return `$ ${numeric || '0'}`;;
+};
+
+const DemoItinerary = ({ onGetStartedClick, showCTA = true }) => {
   const handleGetStarted = () => {
     if (onGetStartedClick) {
       onGetStartedClick();
@@ -140,12 +149,9 @@ const DemoItinerary = ({ onGetStartedClick }) => {
                           {activity.description}
                         </p>
                         {activity.estimated_cost && (
-                          <div className="flex items-center space-x-1">
-                            <DollarSign className="text-green-600" size={14} />
-                            <span className="text-sm text-green-600 font-medium">
-                              {activity.estimated_cost}
-                            </span>
-                          </div>
+                          <span className="text-sm text-green-600 font-medium">
+                            {formatCostPlain(activity.estimated_cost)}
+                          </span>
                         )}
                       </div>
                     </motion.div>
@@ -156,29 +162,31 @@ const DemoItinerary = ({ onGetStartedClick }) => {
           ))}
         </motion.div>
 
-        {/* CTA */}
-        <motion.div
-          variants={fadeInUp}
-          initial="initial"
-          whileInView="animate"
-          viewport={{ once: true }}
-          className="text-center mt-16"
-        >
-          <div className="bg-black rounded-2xl p-8 text-white border border-white/10">
-            <h3 className="text-3xl font-bold mb-4">Ready to Plan Your Own Adventure?</h3>
-            <p className="text-xl text-white/70 mb-8">
-              Sign up now and let our AI create a personalized itinerary just for you.
-            </p>
-            <motion.button
-              onClick={handleGetStarted}
-              className="bg-white text-black px-8 py-4 rounded-lg font-semibold text-lg hover:bg-white/90 transition-colors"
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-            >
-              Get Started Free
-            </motion.button>
-          </div>
-        </motion.div>
+        {/* CTA (optional) */}
+        {showCTA && (
+          <motion.div
+            variants={fadeInUp}
+            initial="initial"
+            whileInView="animate"
+            viewport={{ once: true }}
+            className="text-center mt-16"
+          >
+            <div className="bg-black rounded-2xl p-8 text-white border border-white/10">
+              <h3 className="text-3xl font-bold mb-4">Ready to Plan Your Own Adventure?</h3>
+              <p className="text-xl text-white/70 mb-8">
+                Sign up now and let our AI create a personalized itinerary just for you.
+              </p>
+              <motion.button
+                onClick={handleGetStarted}
+                className="bg-white text-black px-8 py-4 rounded-lg font-semibold text-lg hover:bg-white/90 transition-colors"
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+              >
+                Get Started Free
+              </motion.button>
+            </div>
+          </motion.div>
+        )}
       </div>
     </section>
   );
