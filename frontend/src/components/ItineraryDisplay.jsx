@@ -14,9 +14,13 @@ import {
   Share2,
   Copy
 } from 'lucide-react';
+import { Sun, Cloud, CloudRain, CloudSnow, CloudDrizzle, CloudFog, CloudLightning, CloudSun, Plane } from 'lucide-react';
 import { fadeInUp, staggerContainer } from '../lib/motion';
 import LoadingSpinner from './LoadingSpinner';
-import { getLiveConstraints } from '../lib/api';
+import { getLiveConstraints, searchImages } from '../lib/api';
+
+// Simple in-memory cache to dedupe image lookups across renders
+const imageCache = new Map();
 
 const ItineraryDisplay = ({ itinerary, tripDetails, onSave, onExport, onShare }) => {
   const [editableItinerary, setEditableItinerary] = useState(itinerary || []);
@@ -96,6 +100,115 @@ const ItineraryDisplay = ({ itinerary, tripDetails, onSave, onExport, onShare })
     // You could add a toast notification here
   };
 
+  // -------- Activity Images (Unsplash Source) --------
+  const hashCode = (str) => {
+    let h = 0;
+    for (let i = 0; i < str.length; i++) h = (h << 5) - h + str.charCodeAt(i);
+    return Math.abs(h);
+  };
+
+  const getActivityImageFallback = (name = '') => {
+    return `https://placehold.co/192x192?text=${encodeURIComponent(name || 'Activity')}`;
+  };
+
+  // Animated thumbnail with skeleton + hover effects
+  const ActivityThumbnail = ({ name, destination }) => {
+    const [src, setSrc] = useState(null);
+    const [loaded, setLoaded] = useState(false);
+    const fallback = getActivityImageFallback(name);
+
+    useEffect(() => {
+      let canceled = false;
+      const query = `${destination || ''} ${name || ''}`.trim() || 'travel';
+      // Use cache first to avoid duplicate requests and rate limits
+      const cached = imageCache.get(query);
+      if (cached) {
+        setSrc(cached);
+        return () => { canceled = true; };
+      }
+      async function fetchImage() {
+        try {
+          const data = await searchImages(query, 1);
+          const url = data?.photos?.[0]?.url;
+          if (!canceled) {
+            const chosen = url || // Pexels success
+              `https://source.unsplash.com/480x320/?${encodeURIComponent(query)}` || // fallback (no key)
+              fallback; // final fallback
+            imageCache.set(query, chosen);
+            setSrc(chosen);
+          }
+        } catch (e) {
+          if (!canceled) setSrc(`https://source.unsplash.com/480x320/?${encodeURIComponent(query)}`);
+        }
+      }
+      fetchImage();
+      return () => { canceled = true; };
+    }, [name, destination]);
+
+    return (
+      <motion.div
+        className="relative w-56 h-36 md:w-64 md:h-40 rounded-xl overflow-hidden border border-white/10 bg-white/5 shadow-[0_0_20px_rgba(59,130,246,0.1)]"
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        whileHover={{ scale: 1.03 }}
+        transition={{ duration: 0.25 }}
+      >
+        {!loaded && (
+          <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-white/5 animate-pulse" />
+        )}
+        {src && (
+          <img
+            src={src}
+            alt={name}
+            loading="lazy"
+            className={`absolute inset-0 w-full h-full object-cover ${loaded ? 'opacity-100' : 'opacity-0'}`}
+            referrerPolicy="no-referrer"
+            crossOrigin="anonymous"
+            onLoad={() => setLoaded(true)}
+            onError={() => { setSrc(fallback); setLoaded(true); }}
+          />
+        )}
+        {/* Soft glow border */}
+        <div className="pointer-events-none absolute inset-0 ring-1 ring-white/10 rounded-xl" />
+      </motion.div>
+    );
+  };
+
+  // -------- Flight detection (for EaseMyTrip CTA) --------
+  const isFlightRelatedText = (text = '') => {
+    if (!text) return false;
+    return /(\bflight\b|\bfly\b|\bairport\b|\bairline\b|\bplane\b|\bterminal\b|\bboarding\b|\bdeparture\b|\barrival\b)/i.test(text);
+  };
+
+  const dayHasFlight = (day) => {
+    const acts = day?.activities || [];
+    return acts.some(a => isFlightRelatedText(a?.name) || isFlightRelatedText(a?.description));
+  };
+
+  const easeMyTripUrl = 'https://www.easemytrip.com/flights.html?utm_source=gen-itinerary&utm_medium=referral&utm_campaign=flight-cta';
+
+  // -------- Weather icon mapping --------
+  const WeatherIcon = ({ weather }) => {
+    if (!weather) return null;
+    const s = (weather.summary || '').toLowerCase();
+    const code = weather.code;
+    let Icon = Cloud;
+    if (s.includes('clear')) Icon = Sun;
+    else if (s.includes('partly')) Icon = CloudSun;
+    else if (s.includes('thunder')) Icon = CloudLightning;
+    else if (s.includes('snow')) Icon = CloudSnow;
+    else if (s.includes('drizzle')) Icon = CloudDrizzle;
+    else if (s.includes('rain') || s.includes('shower')) Icon = CloudRain;
+    else if (s.includes('fog')) Icon = CloudFog;
+    else if (s.includes('overcast') || s.includes('cloud')) Icon = Cloud;
+
+    return (
+      <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-white/10 mr-2">
+        <Icon size={16} className="text-white/80" />
+      </span>
+    );
+  };
+
   // Fetch live constraints when trip details change
   useEffect(() => {
     let canceled = false;
@@ -117,6 +230,17 @@ const ItineraryDisplay = ({ itinerary, tripDetails, onSave, onExport, onShare })
       canceled = true;
     };
   }, [tripDetails?.destination, tripDetails?.duration]);
+
+  // Ensure we don't duplicate currency symbols alongside the icon
+  const formatCostPlain = (cost) => {
+    if (!cost) return '';
+    const str = String(cost).trim();
+    // Remove any leading currency symbols and whitespace
+    return str.replace(/^[$¥€£\s]+/, '');
+  };
+
+  // Whether any day appears flight-related
+  const showFlightCTA = Array.isArray(editableItinerary) && editableItinerary.some(dayHasFlight);
 
   return (
     <div className="max-w-6xl mx-auto p-6">
@@ -185,6 +309,29 @@ const ItineraryDisplay = ({ itinerary, tripDetails, onSave, onExport, onShare })
         </div>
       </motion.div>
 
+      {/* Global Flight Booking CTA */}
+      {showFlightCTA && (
+        <div className="bg-blue-600/10 border border-blue-500/30 rounded-lg p-4 mb-8 flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <div className="bg-blue-500/20 p-2 rounded">
+              <Plane className="text-blue-300" size={18} />
+            </div>
+            <div>
+              <div className="text-sm text-blue-200 font-medium">Save more on flights with EaseMyTrip</div>
+              <div className="text-xs text-blue-300">Get better discounts and deals for your trip.</div>
+            </div>
+          </div>
+          <a
+            href={easeMyTripUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-medium"
+          >
+            Book Flights
+          </a>
+        </div>
+      )}
+
       {/* Live Constraints */}
       <motion.div
         variants={fadeInUp}
@@ -200,15 +347,18 @@ const ItineraryDisplay = ({ itinerary, tripDetails, onSave, onExport, onShare })
           <p className="text-red-300">{constraintsError}</p>
         )}
         {!constraintsLoading && constraints && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
             {constraints.days.map((d) => (
-              <div key={d.day} className="bg-white/5 rounded-lg p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-white/80 font-medium">Day {d.day}</span>
+              <div key={d.day} className="bg-white/5 rounded-lg p-6">
+                <div className="flex items-center justify-between gap-4 mb-2">
+                  <span className="text-white/80 font-medium whitespace-nowrap">Day {d.day}</span>
                   {d.weather && (
-                    <span className="text-white/70 text-sm">
-                      {d.weather.summary} • {d.weather.low_c}–{d.weather.high_c}°C • {d.weather.precip_prob}% rain
-                    </span>
+                    <div className="flex items-center text-white/70 text-sm md:text-base min-w-0">
+                      <WeatherIcon weather={d.weather} />
+                      <span className="truncate">
+                        {d.weather.summary} • {d.weather.low_c}–{d.weather.high_c}°C • {d.weather.precip_prob}% rain
+                      </span>
+                    </div>
                   )}
                 </div>
                 {d.events && d.events.length > 0 && (
@@ -287,9 +437,9 @@ const ItineraryDisplay = ({ itinerary, tripDetails, onSave, onExport, onShare })
 
             {/* Activities */}
             <div className="p-6">
-              <div className="space-y-4">
+              <div className="space-y-5">
                 {day.activities.map((activity, activityIndex) => (
-                  <div key={activityIndex} className="bg-white/5 rounded-lg p-4">
+              <div key={activityIndex} className="bg-white/5 rounded-lg p-5">
                     {editingActivity?.dayIndex === dayIndex && editingActivity?.activityIndex === activityIndex ? (
                       <EditActivityForm
                         activity={activity}
@@ -298,35 +448,38 @@ const ItineraryDisplay = ({ itinerary, tripDetails, onSave, onExport, onShare })
                       />
                     ) : (
                       <div className="flex justify-between items-start">
-                        <div className="flex-1">
-                          <div className="flex items-center space-x-3 mb-2">
-                            <h4 className="font-semibold text-white text-lg">{activity.name}</h4>
-                            <motion.button
-                              onClick={() => handleEditActivity(dayIndex, activityIndex)}
-                              className="text-white/80 hover:text-white p-1"
-                              whileHover={{ scale: 1.1 }}
-                            >
-                              <Edit3 size={16} />
-                            </motion.button>
-                            <motion.button
-                              onClick={() => handleDeleteActivity(dayIndex, activityIndex)}
-                              className="text-red-600 hover:text-red-700 p-1"
-                              whileHover={{ scale: 1.1 }}
-                            >
-                              <Trash2 size={16} />
-                            </motion.button>
-                          </div>
-                          <p className="text-white/70 mb-2">{activity.description}</p>
-                          {activity.estimated_cost && (
-                            <div className="flex items-center space-x-2">
-                              <DollarSign size={16} className="text-green-600" />
-                              <span className="text-green-600 font-medium">
-                                {activity.estimated_cost.startsWith('$') 
-                                  ? activity.estimated_cost 
-                                  : `$${activity.estimated_cost}`}
-                              </span>
+                        <div className="flex items-start space-x-6 flex-1">
+                          {/* Activity Image */}
+                          <ActivityThumbnail name={activity.name} destination={tripDetails?.destination} />
+                          {/* Text */}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center space-x-3 mb-2">
+                              <h4 className="font-semibold text-white text-lg">{activity.name}</h4>
+                              <motion.button
+                                onClick={() => handleEditActivity(dayIndex, activityIndex)}
+                                className="text-white/80 hover:text-white p-1"
+                                whileHover={{ scale: 1.1 }}
+                              >
+                                <Edit3 size={16} />
+                              </motion.button>
+                              <motion.button
+                                onClick={() => handleDeleteActivity(dayIndex, activityIndex)}
+                                className="text-red-600 hover:text-red-700 p-1"
+                                whileHover={{ scale: 1.1 }}
+                              >
+                                <Trash2 size={16} />
+                              </motion.button>
                             </div>
-                          )}
+                            <p className="text-white/70 mb-2">{activity.description}</p>
+                            {activity.estimated_cost && (
+                              <div className="flex items-center space-x-2">
+                                <DollarSign size={16} className="text-green-600" />
+                                <span className="text-green-600 font-medium">
+                                  {formatCostPlain(activity.estimated_cost)}
+                                </span>
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </div>
                     )}

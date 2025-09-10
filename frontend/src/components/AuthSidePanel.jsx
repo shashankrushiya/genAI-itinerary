@@ -1,7 +1,14 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, User, Mail, Lock, Eye, EyeOff, LogIn, UserPlus } from 'lucide-react';
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
+import { 
+  createUserWithEmailAndPassword, 
+  signInWithEmailAndPassword,
+  GoogleAuthProvider,
+  signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult
+} from 'firebase/auth';
 import { auth } from '../firebase';
 import { createUser, APIError } from '../lib/api';
 
@@ -85,6 +92,48 @@ const AuthSidePanel = ({ isOpen, onClose, mode, onModeChange, onAuthSuccess }) =
   };
 
   const handleSubmit = mode === 'signup' ? handleSignUp : handleSignIn;
+
+  // Handle Google sign-in (popup first, fallback to redirect)
+  const handleGoogleSignIn = async () => {
+    setLoading(true);
+    setError('');
+    const provider = new GoogleAuthProvider();
+    try {
+      const result = await signInWithPopup(auth, provider);
+      const user = result.user;
+      try {
+        await createUser({ email: user.email, name: user.displayName || 'User' });
+      } catch (_) {
+        // ignore backend errors (e.g., user already exists)
+      }
+      onAuthSuccess(user);
+      onClose();
+    } catch (err) {
+      if (err?.code === 'auth/popup-blocked' || err?.code === 'auth/cancelled-popup-request') {
+        await signInWithRedirect(auth, provider);
+      } else {
+        setError(err.message || 'Google sign-in failed. Please try again.');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Complete redirect flow when coming back from Google
+  React.useEffect(() => {
+    getRedirectResult(auth)
+      .then(async (result) => {
+        if (!result) return;
+        const user = result.user;
+        try {
+          await createUser({ email: user.email, name: user.displayName || 'User' });
+        } catch (_) {}
+        onAuthSuccess(user);
+        onClose();
+      })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <AnimatePresence>
@@ -228,6 +277,28 @@ const AuthSidePanel = ({ isOpen, onClose, mode, onModeChange, onAuthSuccess }) =
                     {mode === 'signup' ? 'Sign In' : 'Sign Up'}
                   </motion.button>
                 </div>
+
+                {/* Divider */}
+                <div className="my-6 flex items-center">
+                  <div className="flex-1 h-px bg-white/10" />
+                  <span className="px-3 text-white/50 text-sm">or</span>
+                  <div className="flex-1 h-px bg-white/10" />
+                </div>
+
+                {/* Google SSO */}
+                <motion.button
+                  type="button"
+                  onClick={handleGoogleSignIn}
+                  className="w-full bg-white/10 hover:bg-white/20 text-white py-3 rounded-lg font-semibold transition-colors flex items-center justify-center space-x-3"
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  disabled={loading}
+                >
+                  <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
+                    <path fill="#EA4335" d="M9 7.3v3.5h4.9c-.2 1.1-1.5 3.2-4.9 3.2A5.6 5.6 0 1 1 9 3.4a5.1 5.1 0 0 1 3.6 1.4l2.5-2.4A9 9 0 1 0 9 18c4.8 0 8.1-3.4 8.1-8.2 0-.6-.1-1.1-.2-1.6H9z"/>
+                  </svg>
+                  <span>Continue with Google</span>
+                </motion.button>
               </div>
             </div>
           </motion.div>

@@ -8,6 +8,7 @@ import Dashboard from '../components/Dashboard';
 import { auth } from '../firebase';
 import { generateItinerary, APIError, getUserData } from '../lib/api';
 import { exportToPDF, shareItinerary } from '../lib/exportUtils';
+import { isSessionExpired, startSession, clearSession } from '../lib/session';
 import { fadeInUp, staggerContainer } from '../lib/motion';
 
 const App = () => {
@@ -25,6 +26,7 @@ const App = () => {
   const [showItinerary, setShowItinerary] = useState(false);
   const [showDashboard, setShowDashboard] = useState(true);
   const [selectedTrip, setSelectedTrip] = useState(null);
+  const interestSuggestions = ['culture', 'food', 'nature', 'history', 'art', 'shopping', 'nightlife', 'adventure', 'museums', 'parks'];
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -35,6 +37,16 @@ const App = () => {
       }
       setUser(currentUser);
       
+      // Enforce 6-hour session window
+      if (isSessionExpired(6)) {
+        try { await auth.signOut(); } catch {}
+        clearSession();
+        navigate('/?expired=1');
+        return;
+      }
+      // If no session info yet (first time after feature), start it now
+      startSession();
+
       // Fetch user data from backend
       try {
         const data = await getUserData(currentUser.email);
@@ -55,6 +67,19 @@ const App = () => {
     setError('');
   };
 
+  const getInterestsArray = () =>
+    (formData.interests || '')
+      .split(',')
+      .map(i => i.trim())
+      .filter(Boolean);
+
+  const toggleInterest = (interest) => {
+    const set = new Set(getInterestsArray());
+    if (set.has(interest)) set.delete(interest); else set.add(interest);
+    const next = Array.from(set).join(', ');
+    setFormData({ ...formData, interests: next });
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -63,11 +88,14 @@ const App = () => {
 
     try {
       const token = await user.getIdToken();
+      const interestsList = formData.interests
+        ? formData.interests.split(',').map(item => item.trim()).filter(Boolean)
+        : [];
       const response = await generateItinerary({
         destination: formData.destination,
         duration: parseInt(formData.duration),
         budget: formData.budget,
-        interests: formData.interests.split(',').map(item => item.trim())
+        interests: interestsList
       }, token);
 
       setResult(response);
@@ -180,6 +208,14 @@ const App = () => {
             )}
             
             <div className="flex items-center space-x-4">
+              {user?.photoURL && (
+                <img
+                  src={user.photoURL}
+                  alt={userData?.name || 'User avatar'}
+                  className="w-8 h-8 rounded-full border border-white/20"
+                  referrerPolicy="no-referrer"
+                />
+              )}
               <span className="text-white/80">Welcome, {userData?.name || user?.email}</span>
               <motion.button
                 onClick={() => auth.signOut()}
@@ -213,10 +249,10 @@ const App = () => {
           >
           {/* Title */}
           <motion.div variants={fadeInUp} className="text-center">
-            <h1 className="text-4xl font-bold text-gray-900 mb-4">
+            <h1 className="text-4xl font-bold text-white mb-4">
               Plan Your Perfect Trip
             </h1>
-            <p className="text-xl text-gray-600">
+            <p className="text-xl text-white/70">
               Tell us about your dream destination and we'll create a personalized itinerary just for you.
             </p>
           </motion.div>
@@ -289,12 +325,27 @@ const App = () => {
                     value={formData.interests}
                     onChange={handleInputChange}
                     className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/50 focus:ring-2 focus:ring-white/50 focus:border-white/50"
-                    placeholder="e.g., culture, food, nature, history"
-                    required
+                    placeholder="e.g., culture, food, nature, history (optional)"
                   />
                   <p className="text-sm text-gray-500 mt-1">
                     Separate multiple interests with commas
                   </p>
+                  {/* Suggestions */}
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {interestSuggestions.map((s) => {
+                      const selected = getInterestsArray().includes(s);
+                      return (
+                        <button
+                          key={s}
+                          type="button"
+                          onClick={() => toggleInterest(s)}
+                          className={`${selected ? 'bg-white text-black' : 'bg-white/10 text-white'} px-3 py-1 rounded-full text-sm border border-white/20 hover:border-white/40 transition-colors`}
+                        >
+                          {s}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
 

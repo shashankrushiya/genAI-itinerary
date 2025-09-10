@@ -121,5 +121,23 @@ export async function getLiveConstraints(destination, duration) {
   }
 }
 
+// Pexels image search via backend proxy
+export async function searchImages(query, perPage = 1) {
+  try {
+    const url = new URL(`${API_BASE_URL}/images/search`);
+    url.searchParams.set('query', query);
+    url.searchParams.set('per_page', String(perPage));
+    const res = await fetch(url.toString(), {
+      method: 'GET',
+      headers: { 'Accept': 'application/json' },
+      credentials: 'include'
+    });
+    return await handleResponse(res);
+  } catch (error) {
+    if (error instanceof APIError) throw error;
+    throw new APIError('Network error: Unable to search images', 0, null);
+  }
+}
+
 // Export error class for use in components
 export { APIError };

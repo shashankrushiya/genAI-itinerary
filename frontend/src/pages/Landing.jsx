@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import Hero from '../components/Hero';
 import FeaturePillars from '../components/FeaturePillars';
 import DemoItinerary from '../components/DemoItinerary';
 import Footer from '../components/Footer';
 import AuthSidePanel from '../components/AuthSidePanel';
+import GoogleOneTap from '../components/GoogleOneTap';
 import { auth } from '../firebase';
 import { getUserData } from '../lib/api';
+import { startSession, clearSession } from '../lib/session';
 import { motion } from 'framer-motion';
 import { fadeInUp, staggerContainer } from '../lib/motion';
 
@@ -17,6 +19,8 @@ const Landing = () => {
   const [authPanelOpen, setAuthPanelOpen] = useState(false);
   const [authMode, setAuthMode] = useState('signin');
   const navigate = useNavigate();
+  const location = useLocation();
+  const [sessionExpired, setSessionExpired] = useState(false);
 
   // Listen for auth state changes and fetch user data
   React.useEffect(() => {
@@ -27,11 +31,11 @@ const Landing = () => {
       if (currentUser) {
         try {
           const data = await getUserData(currentUser.email);
-          setUserData(data);
+          setUserData({ ...data, photoURL: currentUser.photoURL || null });
         } catch (error) {
           console.error('Error fetching user data:', error);
           // If user data not found, create a fallback
-          setUserData({ email: currentUser.email, name: currentUser.displayName || 'User' });
+          setUserData({ email: currentUser.email, name: currentUser.displayName || 'User', photoURL: currentUser.photoURL || null });
         }
       } else {
         setUserData(null);
@@ -39,6 +43,14 @@ const Landing = () => {
     });
     return () => unsubscribe();
   }, []);
+
+  // Detect session expiration via query param
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    if (params.get('expired') === '1') {
+      setSessionExpired(true);
+    }
+  }, [location.search]);
 
   // Listen for custom event to open sign-up from demo page
   React.useEffect(() => {
@@ -73,13 +85,14 @@ const Landing = () => {
 
   const handleAuthSuccess = async (user) => {
     setUser(user);
+    startSession();
     // Fetch user data after successful authentication
     try {
       const data = await getUserData(user.email);
-      setUserData(data);
+      setUserData({ ...data, photoURL: user.photoURL || null });
     } catch (error) {
       console.error('Error fetching user data:', error);
-      setUserData({ email: user.email, name: user.displayName || 'User' });
+      setUserData({ email: user.email, name: user.displayName || 'User', photoURL: user.photoURL || null });
     }
     navigate('/app');
   };
@@ -89,6 +102,7 @@ const Landing = () => {
       await auth.signOut();
       setUser(null);
       setUserData(null);
+      clearSession();
     } catch (error) {
       console.error('Sign out error:', error);
     }
@@ -100,6 +114,25 @@ const Landing = () => {
 
   return (
     <div className="min-h-screen bg-gray-900">
+      {sessionExpired && (
+        <div className="fixed top-16 left-0 right-0 z-40">
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <div className="bg-yellow-500/10 border border-yellow-500/30 text-yellow-200 rounded-lg px-4 py-3 flex items-start justify-between">
+              <div>
+                <strong className="font-semibold">Session expired.</strong>
+                <span className="ml-2">Please sign in again to continue.</span>
+              </div>
+              <button
+                onClick={() => { setSessionExpired(false); navigate('/', { replace: true }); }}
+                className="text-yellow-200 hover:text-white"
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {!user && <GoogleOneTap enabled onAuthSuccess={handleAuthSuccess} />}
       <Navbar
         onSignInClick={handleSignInClick}
         onSignUpClick={handleSignUpClick}

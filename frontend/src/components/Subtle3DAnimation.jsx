@@ -2,6 +2,22 @@ import React, { useRef } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { Sphere } from '@react-three/drei';
 
+// Lightweight background travel motif
+function WireGlobe() {
+  const group = useRef();
+  useFrame((_, delta) => {
+    if (group.current) group.current.rotation.y += delta * 0.03;
+  });
+  return (
+    <group ref={group}>
+      <mesh>
+        <sphereGeometry args={[2.6, 32, 16]} />
+        <meshBasicMaterial color="#3b82f6" wireframe transparent opacity={0.15} />
+      </mesh>
+    </group>
+  );
+}
+
 // Floating particles for subtle 3D effect
 function FloatingParticles({ count = 20 }) {
   const mesh = useRef();
@@ -55,6 +71,7 @@ const Subtle3DAnimation = ({ children }) => {
       >
         <ambientLight intensity={0.5} />
         <FloatingParticles count={15} />
+        <WireGlobe />
       </Canvas>
       
       {/* Content overlay */}

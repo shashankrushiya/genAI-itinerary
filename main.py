@@ -8,6 +8,11 @@ from datetime import datetime
 from auth_middleware import get_current_user
 import httpx
 from typing import Optional, List, Dict, Any
+import os
+from dotenv import load_dotenv
+
+# Load environment variables (.env) for local dev
+load_dotenv()
 
 # Pydantic model for a new user
 class UserCreate(BaseModel):
@@ -18,7 +23,7 @@ class TripRequest(BaseModel):
     destination: str
     duration: int
     budget: str
-    interests: list[str]
+    interests: Optional[list[str]] = None
 
 app = FastAPI()
 
@@ -110,7 +115,7 @@ async def create_and_save_itinerary(
             destination=trip_details.destination,
             days=trip_details.duration,
             budget=trip_details.budget,
-            interests=trip_details.interests
+            interests=trip_details.interests or []
         )
 
         # Step B: Parse the JSON string into a Python dictionary
@@ -124,7 +129,7 @@ async def create_and_save_itinerary(
             "destination": trip_details.destination,
             "duration": trip_details.duration,
             "budget": trip_details.budget,
-            "interests": trip_details.interests,
+            "interests": trip_details.interests or [],
             "created_at": datetime.now()
         }
         trip_doc_ref = db.collection("trips").document() # Firestore auto-generates the ID
@@ -144,7 +149,7 @@ async def create_and_save_itinerary(
                 "destination": trip_details.destination,
                 "duration": trip_details.duration,
                 "budget": trip_details.budget,
-                "interests": trip_details.interests
+                "interests": trip_details.interests or []
             }
         }
 
@@ -213,6 +218,7 @@ async def _fetch_weather(lat: float, lon: float, days: int) -> List[Dict[str, An
             out.append({
                 "date": dates[i],
                 "summary": WEATHER_CODE_MAP.get(code, "Weather"),
+                "code": code,
                 "high_c": tmax[i] if i < len(tmax) else None,
                 "low_c": tmin[i] if i < len(tmin) else None,
                 "precip_prob": precip[i] if i < len(precip) else None,
@@ -281,3 +287,66 @@ async def get_live_constraints(destination: str, duration: int = 5):
             ],
             "error": str(e)
         }
+
+
+# ---------------- Pexels Image Proxy ----------------
+
+PEXELS_API_KEY = os.getenv("PEXELS_API_KEY")
+PEXELS_CACHE: Dict[str, Dict[str, Any]] = {}
+try:
+    PEXELS_CACHE_TTL = int(os.getenv("PEXELS_CACHE_TTL_SECONDS", "86400"))  # 24h default
+except ValueError:
+    PEXELS_CACHE_TTL = 86400
+
+@app.get("/images/search")
+async def search_images(query: str, per_page: int = 1):
+    """
+    Lightweight proxy to Pexels Search API to avoid exposing the API key
+    to the frontend and to handle CORS. Returns a small subset of fields.
+
+    Query params:
+      - query: search text (e.g., "Tokyo sushi")
+      - per_page: number of images to return (default 1)
+    """
+    if not PEXELS_API_KEY:
+        # Graceful degradation without failing the UI
+        return {"photos": [], "error": "not_configured"}
+
+    headers = {"Authorization": PEXELS_API_KEY}
+    params = {
+        "query": query,
+        "per_page": max(1, min(per_page, 5)),
+        "orientation": "landscape",
+    }
+    cache_key = f"{query}|{params['per_page']}|{params['orientation']}"
+    now_ts = int(datetime.utcnow().timestamp())
+    cached = PEXELS_CACHE.get(cache_key)
+    if cached and now_ts - cached.get("ts", 0) < PEXELS_CACHE_TTL:
+        return cached["data"]
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            r = await client.get("https://api.pexels.com/v1/search", headers=headers, params=params)
+            if r.status_code == 429:
+                # Rate limited: return empty result so frontend can fallback
+                data_out = {"photos": [], "error": "rate_limited"}
+                return data_out
+            r.raise_for_status()
+            data = r.json()
+            photos = data.get("photos", [])
+            out = []
+            for p in photos:
+                src = p.get("src", {})
+                out.append({
+                    "url": src.get("landscape") or src.get("large") or src.get("medium") or src.get("original"),
+                    "alt": p.get("alt") or "",
+                    "photographer": p.get("photographer"),
+                    "photographer_url": p.get("photographer_url"),
+                    "source": "pexels",
+                })
+            data_out = {"photos": out}
+            # Cache successful responses
+            PEXELS_CACHE[cache_key] = {"ts": now_ts, "data": data_out}
+            return data_out
+    except httpx.HTTPError as e:
+        # Degrade gracefully; let frontend fallback
+        return {"photos": [], "error": f"downstream_error: {str(e)}"}

@@ -30,20 +30,33 @@ const Navbar = ({ onSignInClick, onSignUpClick, user, onSignOut }) => {
             <a href="#demo" className="text-white/70 hover:text-white transition-colors">
               Demo
             </a>
+            {user && (
+              <a href="/app" className="text-white/70 hover:text-white transition-colors">
+                My Itineraries
+              </a>
+            )}
             
-            {user ? (
-              <div className="flex items-center space-x-4">
-                <span className="text-white/80">Welcome, {user.name || user.email}</span>
-                <motion.button
-                  onClick={onSignOut}
-                  className="px-4 py-2 rounded-lg bg-white text-black hover:bg-white/80 transition-colors"
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                >
-                  Sign Out
-                </motion.button>
-              </div>
-            ) : (
+              {user ? (
+                <div className="flex items-center space-x-4">
+                  {user.photoURL && (
+                    <img
+                      src={user.photoURL}
+                      alt={user.name || 'User avatar'}
+                      className="w-8 h-8 rounded-full border border-white/20"
+                      referrerPolicy="no-referrer"
+                    />
+                  )}
+                  <span className="text-white/80">Welcome, {user.name || user.email}</span>
+                  <motion.button
+                    onClick={onSignOut}
+                    className="px-4 py-2 rounded-lg bg-white text-black hover:bg-white/80 transition-colors"
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                  >
+                    Sign Out
+                  </motion.button>
+                </div>
+              ) : (
               <div className="flex items-center space-x-4">
                 <motion.button
                   onClick={onSignUpClick}
@@ -96,7 +109,23 @@ const Navbar = ({ onSignInClick, onSignUpClick, user, onSignOut }) => {
               
               {user ? (
                 <div className="flex flex-col space-y-2">
-                  <span className="text-gray-300">Welcome, {user.name || user.email}</span>
+                  <div className="flex items-center space-x-3">
+                    {user.photoURL && (
+                      <img
+                        src={user.photoURL}
+                        alt={user.name || 'User avatar'}
+                        className="w-8 h-8 rounded-full border border-white/20"
+                        referrerPolicy="no-referrer"
+                      />
+                    )}
+                    <span className="text-gray-300">Welcome, {user.name || user.email}</span>
+                  </div>
+                  <a
+                    href="/app"
+                    className="text-gray-600 hover:text-primary-600 transition-colors"
+                  >
+                    My Itineraries
+                  </a>
                   <button
                     onClick={onSignOut}
                     className="bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600 transition-colors text-left"

@@ -18,7 +18,6 @@ const Footer = () => {
             <p className="text-white/70 mb-6 max-w-md">
               Plan smarter, not harder. GenItinerary helps you sketch a trip in minutes,
               refine days with smart suggestions, and export or share with one click.
-              A clean, fast, dark UI keeps the focus on your adventure.
             </p>
             <div className="flex items-center space-x-2 text-gray-400">
               <Heart size={16} className="text-red-500" />
@@ -74,7 +73,7 @@ const Footer = () => {
           className="border-t border-gray-800 mt-8 pt-8 text-center"
         >
           <p className="text-gray-400">
-            © 2024 GenItinerary. All rights reserved. Built with AI and ❤️ for travelers.
+            © 2025 GenItinerary. All rights reserved. Built with AI and ❤️ for travelers.
           </p>
         </motion.div>
       </div>
