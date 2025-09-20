@@ -2,12 +2,14 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
+    <link rel="icon" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxNiAxNiI+PGNpcmNsZSBjeD0iOCIgY3k9IjgiIHI9IjciIGZpbGw9IiMxZTQwYWYiLz48cGF0aCBkPSJNNCA2IEw4IDQgTDEyIDYgTDEwIDggTDYgOCBMNCA2IFoiIGZpbGw9IiNmZmZmZmYiLz48cGF0aCBkPSJNNiA2IEw2IDggTDggOCBMOCA2IFoiIGZpbGw9IiNmZmZmZmYiLz48cGF0aCBkPSJNOCA2IEw4IDggTDEwIDggTDEwIDYgWiIgZmlsbD0iI2ZmZmZmZiIvPjwvc3ZnPg==" type="image/svg+xml" />
+    <link rel="icon" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxNiAxNiI+PGNpcmNsZSBjeD0iOCIgY3k9IjgiIHI9IjciIGZpbGw9IiMxZTQwYWYiLz48cGF0aCBkPSJNNCA2IEw4IDQgTDEyIDYgTDEwIDggTDYgOCBMNCA2IFoiIGZpbGw9IiNmZmZmZmYiLz48cGF0aCBkPSJNNiA2IEw2IDggTDggOCBMOCA2IFoiIGZpbGw9IiNmZmZmZmYiLz48cGF0aCBkPSJNOCA2IEw4IDggTDEwIDggTDEwIDYgWiIgZmlsbD0iI2ZmZmZmZiIvPjwvc3ZnPg==" type="image/svg+xml" />
+    <link rel="shortcut icon" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxNiAxNiI+PGNpcmNsZSBjeD0iOCIgY3k9IjgiIHI9IjciIGZpbGw9IiMxZTQwYWYiLz48cGF0aCBkPSJNNCA2IEw4IDQgTDEyIDYgTDEwIDggTDYgOCBMNCA2IFoiIGZpbGw9IiNmZmZmZmYiLz48cGF0aCBkPSJNNiA2IEw2IDggTDggOCBMOCA2IFoiIGZpbGw9IiNmZmZmZmYiLz48cGF0aCBkPSJNOCA2IEw4IDggTDEwIDggTDEwIDYgWiIgZmlsbD0iI2ZmZmZmZiIvPjwvc3ZnPg==" type="image/svg+xml" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#000000" />
+    <meta name="theme-color" content="#1e40af" />
     <meta
       name="description"
-      content="Web site created using create-react-app"
+      content="AI-powered travel itinerary planner. Create personalized trip plans with live weather updates, flight booking, and community sharing."
     />
     <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo192.png" />
     <!--
@@ -27,7 +29,15 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <title>GenItinerary</title>
+    <title>GenItinerary - AI Travel Planner</title>
+    <script>
+      // Force favicon update
+      const favicon = document.createElement('link');
+      favicon.rel = 'icon';
+      favicon.href = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxNiAxNiI+PGNpcmNsZSBjeD0iOCIgY3k9IjgiIHI9IjciIGZpbGw9IiMxZTQwYWYiLz48cGF0aCBkPSJNNCA2IEw4IDQgTDEyIDYgTDEwIDggTDYgOCBMNCA2IFoiIGZpbGw9IiNmZmZmZmYiLz48cGF0aCBkPSJNNiA2IEw2IDggTDggOCBMOCA2IFoiIGZpbGw9IiNmZmZmZmYiLz48cGF0aCBkPSJNOCA2IEw4IDggTDEwIDggTDEwIDYgWiIgZmlsbD0iI2ZmZmZmZiIvPjwvc3ZnPg==';
+      favicon.type = 'image/svg+xml';
+      document.head.appendChild(favicon);
+    </script>
   </head>
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>
