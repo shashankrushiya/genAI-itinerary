@@ -9,13 +9,14 @@ import {
   Eye,
   Edit,
   Trash2,
-  Clock
+  Clock,
+  Globe
 } from 'lucide-react';
 import { fadeInUp, staggerContainer } from '../lib/motion';
 import { getUserTrips } from '../lib/api';
 import LoadingSpinner from './LoadingSpinner';
 
-const Dashboard = ({ user, onNewTrip, onViewTrip, onEditTrip, onDeleteTrip }) => {
+const Dashboard = ({ user, onNewTrip, onViewTrip, onEditTrip, onDeleteTrip, onOpenTripLibrary }) => {
   const [trips, setTrips] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -80,15 +81,27 @@ const Dashboard = ({ user, onNewTrip, onViewTrip, onEditTrip, onDeleteTrip }) =>
             Manage and view all your AI-generated itineraries
           </p>
           
-          <motion.button
-            onClick={onNewTrip}
-            className="bg-white text-black hover:bg-white/90 px-8 py-4 rounded-xl text-lg font-semibold flex items-center space-x-3 mx-auto transition-colors"
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-          >
-            <Plus size={24} />
-            <span>Create New Trip</span>
-          </motion.button>
+          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <motion.button
+              onClick={onNewTrip}
+              className="bg-white text-black hover:bg-white/90 px-8 py-4 rounded-xl text-lg font-semibold flex items-center space-x-3 transition-colors"
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+            >
+              <Plus size={24} />
+              <span>Create New Trip</span>
+            </motion.button>
+            
+            <motion.button
+              onClick={onOpenTripLibrary}
+              className="bg-white/10 text-white hover:bg-white/20 px-8 py-4 rounded-xl text-lg font-semibold flex items-center space-x-3 transition-colors border border-white/20"
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+            >
+              <Globe size={24} />
+              <span>Trip Library</span>
+            </motion.button>
+          </div>
         </motion.div>
 
         {/* Error Message */}
@@ -142,13 +155,13 @@ const Dashboard = ({ user, onNewTrip, onViewTrip, onEditTrip, onDeleteTrip }) =>
               <motion.div
                 key={trip.trip_id}
                 variants={fadeInUp}
-                className="bg-black rounded-2xl border border-white/10 overflow-hidden hover:border-white/20 transition-all"
+                className="bg-black rounded-2xl border border-white/10 overflow-hidden hover:border-white/20 transition-all flex flex-col h-full"
               >
                 {/* Trip Header */}
                 <div className="bg-black p-6 text-white border-b border-white/10">
                   <div className="flex justify-between items-start mb-4">
-                    <div>
-                      <h3 className="text-xl font-bold mb-1">{trip.destination}</h3>
+                    <div className="flex-1 min-w-0 mr-3">
+                      <h3 className="text-xl font-bold mb-1 truncate" title={trip.destination}>{trip.destination}</h3>
                       <p className="text-white/60 text-sm">
                         Created {formatDate(trip.created_at)}
                       </p>
@@ -186,8 +199,8 @@ const Dashboard = ({ user, onNewTrip, onViewTrip, onEditTrip, onDeleteTrip }) =>
                 </div>
 
                 {/* Trip Details */}
-                <div className="p-6">
-                  <div className="space-y-4">
+                <div className="p-6 flex-1 flex flex-col">
+                  <div className="space-y-4 flex-1">
                     <div className="flex items-center space-x-3">
                       <Calendar size={20} className="text-white/60" />
                       <span className="text-white/70">{trip.duration} days</span>
@@ -211,26 +224,26 @@ const Dashboard = ({ user, onNewTrip, onViewTrip, onEditTrip, onDeleteTrip }) =>
                         {getTotalActivities(trip.itinerary)} activities
                       </span>
                     </div>
-                  </div>
 
-                  {/* Quick Preview */}
-                  {trip.itinerary && trip.itinerary.length > 0 && (
-                    <div className="mt-6 pt-6 border-t border-white/10">
-                      <h4 className="font-semibold text-white mb-3">Quick Preview</h4>
-                      <div className="space-y-2">
-                        {trip.itinerary.slice(0, 2).map((day, dayIndex) => (
-                          <div key={dayIndex} className="text-sm text-white/70">
-                            <span className="font-medium">Day {day.day}:</span> {day.title}
-                          </div>
-                        ))}
-                        {trip.itinerary.length > 2 && (
-                          <div className="text-sm text-white/50">
-                            +{trip.itinerary.length - 2} more days...
-                          </div>
-                        )}
+                    {/* Quick Preview */}
+                    {trip.itinerary && trip.itinerary.length > 0 && (
+                      <div className="mt-6 pt-6 border-t border-white/10">
+                        <h4 className="font-semibold text-white mb-3">Quick Preview</h4>
+                        <div className="space-y-2">
+                          {trip.itinerary.slice(0, 2).map((day, dayIndex) => (
+                            <div key={dayIndex} className="text-sm text-white/70">
+                              <span className="font-medium">Day {day.day}:</span> {day.title}
+                            </div>
+                          ))}
+                          {trip.itinerary.length > 2 && (
+                            <div className="text-sm text-white/50">
+                              +{trip.itinerary.length - 2} more days...
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    )}
+                  </div>
 
                   {/* Action Buttons */}
                   <div className="mt-6 flex space-x-3">

@@ -104,11 +104,14 @@ export async function getUserTrips(email, token) {
   }
 }
 
-export async function getLiveConstraints(destination, duration) {
+export async function getLiveConstraints(destination, duration, startDate = null) {
   try {
     const url = new URL(`${API_BASE_URL}/constraints`);
     url.searchParams.set('destination', destination);
     url.searchParams.set('duration', String(duration));
+    if (startDate) {
+      url.searchParams.set('start_date', startDate);
+    }
     const res = await fetch(url.toString(), {
       method: 'GET',
       headers: { 'Accept': 'application/json' },
@@ -136,6 +139,52 @@ export async function searchImages(query, perPage = 1) {
   } catch (error) {
     if (error instanceof APIError) throw error;
     throw new APIError('Network error: Unable to search images', 0, null);
+  }
+}
+
+// Trip Library API functions
+export async function getPublicTrips(page = 1, limit = 12, filters = {}) {
+  try {
+    const url = new URL(`${API_BASE_URL}/api/trip-library`);
+    url.searchParams.set('page', String(page));
+    url.searchParams.set('limit', String(limit));
+    
+    if (filters.destination) url.searchParams.set('destination', filters.destination);
+    if (filters.budget) url.searchParams.set('budget', filters.budget);
+    if (filters.travel_style) url.searchParams.set('travel_style', filters.travel_style);
+    
+    const response = await fetch(url.toString());
+    return await handleResponse(response);
+  } catch (error) {
+    if (error instanceof APIError) throw error;
+    throw new APIError('Network error: Unable to fetch public trips', 0, null);
+  }
+}
+
+export async function getPublicTripDetails(tripId) {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/trip-library/${tripId}`);
+    return await handleResponse(response);
+  } catch (error) {
+    if (error instanceof APIError) throw error;
+    throw new APIError('Network error: Unable to fetch trip details', 0, null);
+  }
+}
+
+export async function updateItinerary(tripId, itinerary, token) {
+  try {
+    const response = await fetch(`${API_BASE_URL}/trips/${tripId}/itinerary`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ itinerary })
+    });
+    return await handleResponse(response);
+  } catch (error) {
+    if (error instanceof APIError) throw error;
+    throw new APIError('Network error: Unable to update itinerary', 0, null);
   }
 }
 

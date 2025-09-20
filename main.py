@@ -2,9 +2,10 @@ import json
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from firebase_config import db
+from google.cloud import firestore
 from pydantic import BaseModel
 from genai_helper import generate_itinerary
-from datetime import datetime
+from datetime import datetime, timedelta
 from auth_middleware import get_current_user
 import httpx
 from typing import Optional, List, Dict, Any
@@ -24,6 +25,10 @@ class TripRequest(BaseModel):
     duration: int
     budget: str
     interests: Optional[list[str]] = None
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    travel_style: Optional[str] = None
+    is_public: Optional[bool] = False
 
 app = FastAPI()
 
@@ -115,7 +120,8 @@ async def create_and_save_itinerary(
             destination=trip_details.destination,
             days=trip_details.duration,
             budget=trip_details.budget,
-            interests=trip_details.interests or []
+            interests=trip_details.interests or [],
+            travel_style=trip_details.travel_style
         )
 
         # Step B: Parse the JSON string into a Python dictionary
@@ -130,6 +136,10 @@ async def create_and_save_itinerary(
             "duration": trip_details.duration,
             "budget": trip_details.budget,
             "interests": trip_details.interests or [],
+            "start_date": trip_details.start_date,
+            "end_date": trip_details.end_date,
+            "travel_style": trip_details.travel_style,
+            "is_public": trip_details.is_public or False,
             "created_at": datetime.now()
         }
         trip_doc_ref = db.collection("trips").document() # Firestore auto-generates the ID
@@ -149,7 +159,10 @@ async def create_and_save_itinerary(
                 "destination": trip_details.destination,
                 "duration": trip_details.duration,
                 "budget": trip_details.budget,
-                "interests": trip_details.interests or []
+                "interests": trip_details.interests or [],
+                "start_date": trip_details.start_date,
+                "end_date": trip_details.end_date,
+                "travel_style": trip_details.travel_style
             }
         }
 
@@ -184,16 +197,50 @@ WEATHER_CODE_MAP = {
 async def _geocode_destination(destination: str) -> Optional[Dict[str, Any]]:
     """Geocode a destination name to lat/lon using Open‑Meteo's free API."""
     url = "https://geocoding-api.open-meteo.com/v1/search"
-    params = {"name": destination, "count": 1, "language": "en", "format": "json"}
+    
+    # Try multiple variations to get better results
+    search_terms = [
+        destination,
+        f"{destination}, Indonesia",  # Common for Bali, Jakarta, etc.
+        f"{destination}, Thailand",    # Common for Bangkok, Phuket, etc.
+        f"{destination}, Japan",      # Common for Tokyo, Kyoto, etc.
+        f"{destination}, Italy",      # Common for Rome, Florence, etc.
+        f"{destination}, France",    # Common for Paris, Nice, etc.
+        f"{destination}, Spain",      # Common for Barcelona, Madrid, etc.
+        f"{destination}, USA",        # Common for New York, Los Angeles, etc.
+    ]
+    
     async with httpx.AsyncClient(timeout=10) as client:
-        r = await client.get(url, params=params)
-        if r.status_code != 200:
-            return None
-        data = r.json()
-        results = data.get("results") or []
-        return results[0] if results else None
+        for search_term in search_terms:
+            params = {"name": search_term, "count": 5, "language": "en", "format": "json"}
+            r = await client.get(url, params=params)
+            if r.status_code != 200:
+                continue
+            data = r.json()
+            results = data.get("results") or []
+            
+            # Look for the best match
+            for result in results:
+                name = result.get("name", "").lower()
+                country = result.get("country", "").lower()
+                
+                # Skip if it's clearly the wrong location (like Bali, India)
+                if destination.lower() == "bali" and "india" in country:
+                    continue
+                if destination.lower() == "bangkok" and "india" in country:
+                    continue
+                    
+                # Prefer results that match the destination name closely
+                if destination.lower() in name or name in destination.lower():
+                    return result
+            
+            # If no good match found, return the first result
+            if results:
+                return results[0]
+    
+    return None
 
-async def _fetch_weather(lat: float, lon: float, days: int) -> List[Dict[str, Any]]:
+async def _fetch_weather(lat: float, lon: float, days: int, start_date: Optional[str] = None) -> List[Dict[str, Any]]:
     """Fetch a simple multi‑day forecast from Open‑Meteo."""
     url = "https://api.open-meteo.com/v1/forecast"
     params = {
@@ -203,6 +250,9 @@ async def _fetch_weather(lat: float, lon: float, days: int) -> List[Dict[str, An
         "forecast_days": max(1, min(days, 16)),
         "timezone": "auto",
     }
+    
+    # Note: Open-Meteo doesn't support start_date/end_date with forecast_days
+    # We'll get current forecast and adjust dates in post-processing if needed
     async with httpx.AsyncClient(timeout=10) as client:
         r = await client.get(url, params=params)
         r.raise_for_status()
@@ -235,7 +285,7 @@ def _mock_events(destination: str, days: int) -> List[List[Dict[str, Any]]]:
     return [[samples[i % len(samples)]] for i in range(days)]
 
 @app.get("/constraints")
-async def get_live_constraints(destination: str, duration: int = 5):
+async def get_live_constraints(destination: str, duration: int = 5, start_date: Optional[str] = None):
     """
     Returns live constraints to augment an itinerary:
     - Daily weather (Open‑Meteo)
@@ -250,7 +300,7 @@ async def get_live_constraints(destination: str, duration: int = 5):
 
         weather = []
         if geo:
-            weather = await _fetch_weather(geo["latitude"], geo["longitude"], days)
+            weather = await _fetch_weather(geo["latitude"], geo["longitude"], days, start_date)
 
         # Mock events and basic advisories for now
         events = _mock_events(destination, days)
@@ -297,6 +347,70 @@ try:
     PEXELS_CACHE_TTL = int(os.getenv("PEXELS_CACHE_TTL_SECONDS", "86400"))  # 24h default
 except ValueError:
     PEXELS_CACHE_TTL = 86400
+
+# ---------------- Geocoding and Places API ----------------
+
+@app.get("/geocode/{destination}")
+async def geocode_destination_endpoint(destination: str):
+    """
+    Get latitude/longitude coordinates for a destination.
+    Used by frontend for map centering and location services.
+    """
+    try:
+        geo = await _geocode_destination(destination)
+        if geo:
+            return {
+                "destination": destination,
+                "latitude": geo["latitude"],
+                "longitude": geo["longitude"],
+                "country": geo.get("country", ""),
+                "admin1": geo.get("admin1", ""),
+                "formatted_name": geo.get("name", destination)
+            }
+        else:
+            raise HTTPException(status_code=404, detail="Destination not found")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Geocoding failed: {str(e)}")
+
+@app.get("/places/{destination}")
+async def get_places_near_destination(
+    destination: str, 
+    place_type: str = "tourist_attraction",
+    limit: int = 10
+):
+    """
+    Get nearby places of interest for a destination.
+    Used for activity suggestions and location data.
+    """
+    try:
+        # First geocode the destination
+        geo = await _geocode_destination(destination)
+        if not geo:
+            raise HTTPException(status_code=404, detail="Destination not found")
+        
+        # For now, return mock data. In production, integrate with Google Places API
+        mock_places = [
+            {
+                "name": f"Popular {place_type.replace('_', ' ')} in {destination}",
+                "location": f"{geo['latitude']},{geo['longitude']}",
+                "rating": 4.5,
+                "type": place_type,
+                "description": f"A must-visit {place_type.replace('_', ' ')} in {destination}"
+            }
+        ]
+        
+        return {
+            "destination": destination,
+            "places": mock_places,
+            "center": {
+                "latitude": geo["latitude"],
+                "longitude": geo["longitude"]
+            }
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Places lookup failed: {str(e)}")
 
 @app.get("/images/search")
 async def search_images(query: str, per_page: int = 1):
@@ -350,3 +464,169 @@ async def search_images(query: str, per_page: int = 1):
     except httpx.HTTPError as e:
         # Degrade gracefully; let frontend fallback
         return {"photos": [], "error": f"downstream_error: {str(e)}"}
+
+@app.get("/api/trip-library")
+async def get_public_trips(
+    page: int = 1,
+    limit: int = 12,
+    destination: Optional[str] = None,
+    budget: Optional[str] = None,
+    travel_style: Optional[str] = None
+):
+    """Get public trips for the Trip Library with optional filtering"""
+    try:
+        # Build query for public trips (simplified to avoid index requirements)
+        query = db.collection("trips").where("is_public", "==", True)
+        
+        # Apply pagination first
+        offset = (page - 1) * limit
+        query = query.offset(offset).limit(limit)
+        
+        # Execute query
+        trips_docs = query.stream()
+        
+        trips = []
+        for trip_doc in trips_docs:
+            trip_data = trip_doc.to_dict()
+            trip_data["trip_id"] = trip_doc.id
+            
+            # Apply client-side filtering
+            if destination and destination.lower() not in trip_data.get("destination", "").lower():
+                continue
+            if budget and trip_data.get("budget") != budget:
+                continue
+            if travel_style and trip_data.get("travel_style") != travel_style:
+                continue
+            
+            # Get user info for the trip creator
+            try:
+                user_doc = db.collection("users").document(trip_data["user_id"]).get()
+                if user_doc.exists:
+                    user_data = user_doc.to_dict()
+                    trip_data["creator_name"] = user_data.get("name", "Anonymous")
+                    trip_data["creator_email"] = user_data.get("email", "")
+                else:
+                    trip_data["creator_name"] = "Anonymous"
+                    trip_data["creator_email"] = ""
+            except Exception:
+                trip_data["creator_name"] = "Anonymous"
+                trip_data["creator_email"] = ""
+            
+            # Get itinerary preview (first few days)
+            try:
+                itinerary_docs = trip_doc.reference.collection("itineraries").limit(1).stream()
+                for itinerary_doc in itinerary_docs:
+                    itinerary_data = itinerary_doc.to_dict()
+                    trip_data["itinerary"] = itinerary_data.get("itinerary", [])
+                    break
+            except Exception:
+                trip_data["itinerary"] = []
+            
+            trips.append(trip_data)
+        
+        return {
+            "trips": trips,
+            "page": page,
+            "limit": limit,
+            "total": len(trips)
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch public trips: {str(e)}")
+
+@app.get("/api/trip-library/{trip_id}")
+async def get_public_trip_details(trip_id: str):
+    """Get detailed information about a specific public trip"""
+    try:
+        # Get trip document
+        trip_doc = db.collection("trips").document(trip_id).get()
+        if not trip_doc.exists:
+            raise HTTPException(status_code=404, detail="Trip not found")
+        
+        trip_data = trip_doc.to_dict()
+        
+        # Check if trip is public
+        if not trip_data.get("is_public", False):
+            raise HTTPException(status_code=403, detail="This trip is not public")
+        
+        trip_data["trip_id"] = trip_id
+        
+        # Get user info for the trip creator
+        try:
+            user_doc = db.collection("users").document(trip_data["user_id"]).get()
+            if user_doc.exists:
+                user_data = user_doc.to_dict()
+                trip_data["creator_name"] = user_data.get("name", "Anonymous")
+                trip_data["creator_email"] = user_data.get("email", "")
+            else:
+                trip_data["creator_name"] = "Anonymous"
+                trip_data["creator_email"] = ""
+        except Exception:
+            trip_data["creator_name"] = "Anonymous"
+            trip_data["creator_email"] = ""
+        
+        # Get full itinerary
+        try:
+            itinerary_docs = trip_doc.reference.collection("itineraries").limit(1).stream()
+            for itinerary_doc in itinerary_docs:
+                itinerary_data = itinerary_doc.to_dict()
+                trip_data["itinerary"] = itinerary_data.get("itinerary", [])
+                break
+        except Exception:
+            trip_data["itinerary"] = []
+        
+        return trip_data
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch trip details: {str(e)}")
+
+@app.put("/api/trips/{trip_id}/itinerary")
+async def update_trip_itinerary(
+    trip_id: str,
+    itinerary_data: dict,
+    current_user: dict = Depends(get_current_user)
+):
+    """Update the itinerary for a specific trip"""
+    try:
+        user_id = current_user['uid']
+        
+        # Get the trip document
+        trip_doc = db.collection("trips").document(trip_id).get()
+        if not trip_doc.exists:
+            raise HTTPException(status_code=404, detail="Trip not found")
+        
+        trip_data = trip_doc.to_dict()
+        
+        # Check if the user owns this trip
+        if trip_data.get("user_id") != user_id:
+            raise HTTPException(status_code=403, detail="You can only update your own trips")
+        
+        # Update the itinerary in the subcollection
+        itinerary_docs = trip_doc.reference.collection("itineraries").limit(1).stream()
+        itinerary_doc_ref = None
+        
+        for doc in itinerary_docs:
+            itinerary_doc_ref = doc.reference
+            break
+        
+        if not itinerary_doc_ref:
+            raise HTTPException(status_code=404, detail="Itinerary not found")
+        
+        # Update the itinerary data
+        itinerary_doc_ref.update({
+            "itinerary": itinerary_data.get("itinerary", []),
+            "updated_at": datetime.now()
+        })
+        
+        return {
+            "message": "Itinerary updated successfully",
+            "trip_id": trip_id,
+            "updated_at": datetime.now().isoformat()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update itinerary: {str(e)}")

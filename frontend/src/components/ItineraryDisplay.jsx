@@ -12,11 +12,12 @@ import {
   X,
   Download,
   Share2,
-  Copy
+  Heart,
 } from 'lucide-react';
 import { Sun, Cloud, CloudRain, CloudSnow, CloudDrizzle, CloudFog, CloudLightning, CloudSun, Plane } from 'lucide-react';
 import { fadeInUp, staggerContainer } from '../lib/motion';
 import LoadingSpinner from './LoadingSpinner';
+import InteractiveMap from './InteractiveMap';
 import { getLiveConstraints, searchImages } from '../lib/api';
 
 // Simple in-memory cache to dedupe image lookups across renders
@@ -31,6 +32,17 @@ const ItineraryDisplay = ({ itinerary, tripDetails, onSave, onExport, onShare })
   const [constraints, setConstraints] = useState(null);
   const [constraintsLoading, setConstraintsLoading] = useState(false);
   const [constraintsError, setConstraintsError] = useState('');
+  const [showMap, setShowMap] = useState(false);
+  const [showToast, setShowToast] = useState(false);
+  const [toastMessage, setToastMessage] = useState('');
+
+  const showToastMessage = (message) => {
+    setToastMessage(message);
+    setShowToast(true);
+    setTimeout(() => {
+      setShowToast(false);
+    }, 3000);
+  };
 
   const handleEditDay = (dayIndex) => {
     setEditingDay(editingDay === dayIndex ? null : dayIndex);
@@ -80,6 +92,15 @@ const ItineraryDisplay = ({ itinerary, tripDetails, onSave, onExport, onShare })
   const handleSaveItinerary = () => {
     if (onSave) {
       onSave(editableItinerary);
+      showToastMessage('Itinerary saved successfully!');
+    }
+  };
+
+  const handleLocationUpdate = (dayIndex, activityIndex, newLocation) => {
+    const updatedItinerary = [...editableItinerary];
+    if (updatedItinerary[dayIndex] && updatedItinerary[dayIndex].activities[activityIndex]) {
+      updatedItinerary[dayIndex].activities[activityIndex].location = newLocation;
+      setEditableItinerary(updatedItinerary);
     }
   };
 
@@ -95,17 +116,7 @@ const ItineraryDisplay = ({ itinerary, tripDetails, onSave, onExport, onShare })
     }
   };
 
-  const copyToClipboard = (text) => {
-    navigator.clipboard.writeText(text);
-    // You could add a toast notification here
-  };
-
   // -------- Activity Images (Unsplash Source) --------
-  const hashCode = (str) => {
-    let h = 0;
-    for (let i = 0; i < str.length; i++) h = (h << 5) - h + str.charCodeAt(i);
-    return Math.abs(h);
-  };
 
   const getActivityImageFallback = (name = '') => {
     return `https://placehold.co/192x192?text=${encodeURIComponent(name || 'Activity')}`;
@@ -143,7 +154,7 @@ const ItineraryDisplay = ({ itinerary, tripDetails, onSave, onExport, onShare })
       }
       fetchImage();
       return () => { canceled = true; };
-    }, [name, destination]);
+    }, [name, destination, fallback]);
 
     return (
       <motion.div
@@ -191,7 +202,6 @@ const ItineraryDisplay = ({ itinerary, tripDetails, onSave, onExport, onShare })
   const WeatherIcon = ({ weather }) => {
     if (!weather) return null;
     const s = (weather.summary || '').toLowerCase();
-    const code = weather.code;
     let Icon = Cloud;
     if (s.includes('clear')) Icon = Sun;
     else if (s.includes('partly')) Icon = CloudSun;
@@ -217,7 +227,7 @@ const ItineraryDisplay = ({ itinerary, tripDetails, onSave, onExport, onShare })
       try {
         setConstraintsLoading(true);
         setConstraintsError('');
-        const data = await getLiveConstraints(tripDetails.destination, tripDetails.duration);
+        const data = await getLiveConstraints(tripDetails.destination, tripDetails.duration, tripDetails.start_date);
         if (!canceled) setConstraints(data);
       } catch (e) {
         if (!canceled) setConstraintsError('Unable to load live updates right now.');
@@ -229,107 +239,294 @@ const ItineraryDisplay = ({ itinerary, tripDetails, onSave, onExport, onShare })
     return () => {
       canceled = true;
     };
-  }, [tripDetails?.destination, tripDetails?.duration]);
+  }, [tripDetails?.destination, tripDetails?.duration, tripDetails?.start_date]);
 
-  // Ensure we don't duplicate currency symbols alongside the icon
-  const formatCostPlain = (cost) => {
-    if (!cost) return '';
+  // Enhanced cost formatting for better readability
+  const formatCost = (cost) => {
+    if (!cost) return { symbol: '$', amount: '0' };
     const str = String(cost).trim();
-    // Remove any leading currency symbols and whitespace
-    return str.replace(/^[$¥€£\s]+/, '');
+    
+    // Extract currency symbol and amount, handling multiple symbols
+    const currencyMatch = str.match(/^([$¥€£]+)\s*(.+)$/);
+    if (currencyMatch) {
+      const [, symbols, amount] = currencyMatch;
+      // Take only the first currency symbol to avoid duplicates
+      const symbol = symbols[0];
+      return { symbol, amount: amount.trim() };
+    }
+    
+    // If no currency symbol, assume USD
+    return { symbol: '$', amount: str };
+  };
+
+
+  // Calculate daily cost summary
+  const getDailyCostSummary = (day) => {
+    if (!day.activities || day.activities.length === 0) return null;
+    
+    const costs = day.activities
+      .map(activity => activity.estimated_cost)
+      .filter(cost => cost && cost.trim())
+      .map(cost => {
+        const formatted = formatCost(cost);
+        const amount = parseFloat(formatted.amount.replace(/[^\d.-]/g, ''));
+        return { symbol: formatted.symbol, amount: isNaN(amount) ? 0 : amount };
+      });
+    
+    if (costs.length === 0) return null;
+    
+    // Group by currency
+    const currencyGroups = costs.reduce((acc, cost) => {
+      if (!acc[cost.symbol]) acc[cost.symbol] = 0;
+      acc[cost.symbol] += cost.amount;
+      return acc;
+    }, {});
+    
+    return Object.entries(currencyGroups).map(([symbol, total]) => ({
+      symbol,
+      total: Math.round(total * 100) / 100
+    }));
   };
 
   // Whether any day appears flight-related
   const showFlightCTA = Array.isArray(editableItinerary) && editableItinerary.some(dayHasFlight);
 
   return (
-    <div className="max-w-6xl mx-auto p-6">
+    <div className="w-full max-w-7xl mx-auto p-3 sm:p-4 lg:p-6">
       {/* Header with Trip Details */}
       <motion.div
         variants={fadeInUp}
         initial="initial"
         animate="animate"
-        className="bg-black rounded-2xl p-8 text-white mb-8 border border-white/10"
+        className="bg-black rounded-2xl p-4 sm:p-6 lg:p-8 text-white mb-6 border border-white/10 overflow-hidden"
       >
-        <div className="flex justify-between items-start mb-6">
-          <div>
-            <h2 className="text-3xl font-bold mb-2">Your Personalized Itinerary</h2>
-            <p className="text-white/60 text-lg">
-              {tripDetails?.destination} • {tripDetails?.duration} days • {tripDetails?.budget}
-            </p>
+        {/* Header Section */}
+        <div className="mb-6">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="p-2 rounded-lg bg-gradient-to-r from-blue-500/20 to-emerald-500/20 border border-blue-400/30 flex-shrink-0">
+              <Calendar size={18} className="text-blue-300" />
+            </div>
+            <h2 className="text-xl sm:text-2xl lg:text-3xl font-bold text-white leading-tight">Your Personalized Itinerary</h2>
           </div>
-          <div className="flex space-x-3">
-            <motion.button
-              onClick={handleSaveItinerary}
-              className="bg-white/20 hover:bg-white/30 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors"
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-            >
-              <Save size={20} />
-              <span>Save Changes</span>
-            </motion.button>
-            <motion.button
-              onClick={handleExportPDF}
-              className="bg-white/20 hover:bg-white/30 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors"
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-            >
-              <Download size={20} />
-              <span>Export PDF</span>
-            </motion.button>
-            <motion.button
-              onClick={handleShareItinerary}
-              className="bg-white/20 hover:bg-white/30 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors"
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-            >
-              <Share2 size={20} />
-              <span>Share</span>
-            </motion.button>
+          <div className="flex flex-wrap items-center gap-2 text-white/70">
+            <span className="px-3 py-1.5 bg-white/10 rounded-full text-sm font-medium max-w-[200px] truncate" title={tripDetails?.destination}>{tripDetails?.destination}</span>
+            <span className="text-white/50 text-sm">•</span>
+            <span className="px-3 py-1.5 bg-white/10 rounded-full text-sm font-medium">{tripDetails?.duration} days</span>
+            <span className="text-white/50 text-sm">•</span>
+            <span className="px-3 py-1.5 bg-white/10 rounded-full text-sm font-medium max-w-[150px] truncate" title={tripDetails?.budget}>{tripDetails?.budget}</span>
           </div>
         </div>
         
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="flex items-center space-x-2">
-            <MapPin size={20} />
-            <span className="text-sm">{tripDetails?.destination}</span>
+        {/* Trip Details - Clean Card Layout */}
+        <div className="space-y-4 mb-6">
+          {/* First Row - Destination & Duration */}
+          <div className="flex flex-col sm:flex-row gap-4">
+            <motion.div 
+              className="flex-1 group flex items-center space-x-4 p-5 rounded-xl bg-gradient-to-br from-white/5 to-white/10 border border-white/10 hover:border-white/20 transition-all duration-300 cursor-pointer"
+              whileHover={{ scale: 1.02, y: -2 }}
+              whileTap={{ scale: 0.98 }}
+            >
+              <div className="p-3 rounded-lg bg-gradient-to-br from-blue-500/20 to-blue-600/20 group-hover:from-blue-400/30 group-hover:to-blue-500/30 transition-all duration-300 flex-shrink-0">
+                <MapPin size={20} className="text-blue-300" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs text-white/60 uppercase tracking-wide font-medium mb-1">Destination</p>
+                <p className="text-base font-semibold text-white group-hover:text-blue-300 transition-colors duration-300 leading-tight truncate" title={tripDetails?.destination}>{tripDetails?.destination}</p>
+              </div>
+            </motion.div>
+            
+            <motion.div 
+              className="flex-1 group flex items-center space-x-4 p-5 rounded-xl bg-gradient-to-br from-white/5 to-white/10 border border-white/10 hover:border-white/20 transition-all duration-300 cursor-pointer"
+              whileHover={{ scale: 1.02, y: -2 }}
+              whileTap={{ scale: 0.98 }}
+            >
+              <div className="p-3 rounded-lg bg-gradient-to-br from-emerald-500/20 to-emerald-600/20 group-hover:from-emerald-400/30 group-hover:to-emerald-500/30 transition-all duration-300 flex-shrink-0">
+                <Calendar size={20} className="text-emerald-300" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs text-white/60 uppercase tracking-wide font-medium mb-1">Duration</p>
+                <p className="text-base font-semibold text-white group-hover:text-emerald-300 transition-colors duration-300 leading-tight">{tripDetails?.duration} days</p>
+              </div>
+            </motion.div>
           </div>
-          <div className="flex items-center space-x-2">
-            <Calendar size={20} />
-            <span className="text-sm">{tripDetails?.duration} days</span>
+
+          {/* Second Row - Budget & Travel Style */}
+          <div className="flex flex-col sm:flex-row gap-4">
+            <motion.div 
+              className="flex-1 group flex items-center space-x-4 p-5 rounded-xl bg-gradient-to-br from-white/5 to-white/10 border border-white/10 hover:border-white/20 transition-all duration-300 cursor-pointer"
+              whileHover={{ scale: 1.02, y: -2 }}
+              whileTap={{ scale: 0.98 }}
+            >
+              <div className="p-3 rounded-lg bg-gradient-to-br from-yellow-500/20 to-yellow-600/20 group-hover:from-yellow-400/30 group-hover:to-yellow-500/30 transition-all duration-300 flex-shrink-0">
+                <DollarSign size={20} className="text-yellow-300" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs text-white/60 uppercase tracking-wide font-medium mb-1">Budget</p>
+                <p className="text-base font-semibold text-white group-hover:text-yellow-300 transition-colors duration-300 leading-tight truncate" title={tripDetails?.budget}>{tripDetails?.budget}</p>
+              </div>
+            </motion.div>
+            
+            <motion.div 
+              className="flex-1 group flex items-center space-x-4 p-5 rounded-xl bg-gradient-to-br from-white/5 to-white/10 border border-white/10 hover:border-white/20 transition-all duration-300 cursor-pointer"
+              whileHover={{ scale: 1.02, y: -2 }}
+              whileTap={{ scale: 0.98 }}
+            >
+              <div className="p-3 rounded-lg bg-gradient-to-br from-pink-500/20 to-pink-600/20 group-hover:from-pink-400/30 group-hover:to-pink-500/30 transition-all duration-300 flex-shrink-0">
+                <Heart size={20} className="text-pink-300" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs text-white/60 uppercase tracking-wide font-medium mb-1">Travel Style</p>
+                <p className="text-base font-semibold text-white group-hover:text-pink-300 transition-colors duration-300 leading-tight truncate" title={tripDetails?.travel_style}>{tripDetails?.travel_style}</p>
+              </div>
+            </motion.div>
           </div>
-          <div className="flex items-center space-x-2">
-            <DollarSign size={20} />
-            <span className="text-sm">{tripDetails?.budget}</span>
+
+          {/* Third Row - Interests (Full Width) */}
+          <motion.div 
+            className="group flex items-center space-x-4 p-5 rounded-xl bg-gradient-to-br from-white/5 to-white/10 border border-white/10 hover:border-white/20 transition-all duration-300 cursor-pointer"
+            whileHover={{ scale: 1.02, y: -2 }}
+            whileTap={{ scale: 0.98 }}
+          >
+            <div className="p-3 rounded-lg bg-gradient-to-br from-purple-500/20 to-purple-600/20 group-hover:from-purple-400/30 group-hover:to-purple-500/30 transition-all duration-300 flex-shrink-0">
+              <Clock size={20} className="text-purple-300" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs text-white/60 uppercase tracking-wide font-medium mb-1">Interests</p>
+              <p className="text-base font-semibold text-white group-hover:text-purple-300 transition-colors duration-300 leading-tight" title={tripDetails?.interests?.join(', ')}>
+                {tripDetails?.interests && tripDetails.interests.length > 0 
+                  ? tripDetails.interests.join(', ')
+                  : 'No specific interests'
+                }
+              </p>
+            </div>
+          </motion.div>
+        </div>
+
+        {/* Prominent Flight Booking CTA */}
+        {showFlightCTA && (
+          <motion.div
+            variants={fadeInUp}
+            initial="initial"
+            animate="animate"
+            className="bg-gradient-to-r from-blue-600/20 to-blue-700/20 border border-blue-500/40 rounded-xl p-6 mb-6 overflow-hidden relative"
+          >
+            <div className="absolute inset-0 bg-gradient-to-r from-blue-500/5 to-blue-600/5" />
+            <div className="relative flex flex-col sm:flex-row items-center justify-between gap-4">
+              <div className="flex items-center space-x-4">
+                <div className="bg-blue-500/30 p-3 rounded-xl">
+                  <Plane className="text-blue-200" size={24} />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-blue-100 mb-1">Ready to Book Your Flights?</h3>
+                  <p className="text-blue-200/80 text-sm">Get exclusive discounts and deals with EaseMyTrip for your {tripDetails?.destination} trip</p>
+                </div>
+              </div>
+              <a
+                href={easeMyTripUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-3 rounded-lg text-sm font-semibold transition-all duration-300 hover:scale-105 flex items-center space-x-2"
+              >
+                <Plane size={16} />
+                <span>Book Flights Now</span>
+              </a>
+            </div>
+          </motion.div>
+        )}
+
+        {/* Action Buttons - Clean Layout */}
+        <div className="pt-6 border-t border-white/10">
+          <div className="text-center mb-6">
+            <h3 className="text-lg font-semibold text-white mb-2">Quick Actions</h3>
+            <p className="text-sm text-white/60">Manage your itinerary</p>
           </div>
-          <div className="flex items-center space-x-2">
-            <Clock size={20} />
-            <span className="text-sm">{tripDetails?.interests?.join(', ')}</span>
+          
+          <div className="flex flex-col sm:flex-row gap-4">
+            <motion.button
+              onClick={() => setShowMap(!showMap)}
+              className={`flex-1 group flex items-center space-x-3 p-4 rounded-xl transition-all duration-300 ${
+                showMap 
+                  ? 'bg-gradient-to-br from-blue-500/20 to-blue-600/20 border-2 border-blue-400/40 text-blue-300 hover:from-blue-400/30 hover:to-blue-500/30' 
+                  : 'bg-gradient-to-br from-white/5 to-white/10 border border-white/20 text-white hover:border-white/30 hover:from-white/10 hover:to-white/15'
+              }`}
+              whileHover={{ scale: 1.02, y: -2 }}
+              whileTap={{ scale: 0.98 }}
+            >
+              <div className={`p-2 rounded-lg transition-all duration-300 ${
+                showMap ? 'bg-blue-500/30' : 'bg-white/10 group-hover:bg-white/20'
+              }`}>
+                <MapPin size={18} />
+              </div>
+              <div className="text-left">
+                <p className="font-semibold text-sm">{showMap ? 'Hide Map' : 'Show Map'}</p>
+                <p className="text-xs opacity-70">{showMap ? 'Hide interactive map' : 'View interactive map'}</p>
+              </div>
+            </motion.button>
+            
+            <motion.button
+              onClick={handleSaveItinerary}
+              className="flex-1 group flex items-center space-x-3 p-4 rounded-xl bg-gradient-to-br from-white/5 to-white/10 border border-white/20 text-white hover:border-white/30 hover:from-white/10 hover:to-white/15 transition-all duration-300"
+              whileHover={{ scale: 1.02, y: -2 }}
+              whileTap={{ scale: 0.98 }}
+            >
+              <div className="p-2 rounded-lg bg-white/10 group-hover:bg-white/20 transition-all duration-300">
+                <Save size={18} />
+              </div>
+              <div className="text-left">
+                <p className="font-semibold text-sm">Save Changes</p>
+                <p className="text-xs opacity-70">Update itinerary</p>
+              </div>
+            </motion.button>
+            
+            <motion.button
+              onClick={handleExportPDF}
+              className="flex-1 group flex items-center space-x-3 p-4 rounded-xl bg-gradient-to-br from-white/5 to-white/10 border border-white/20 text-white hover:border-white/30 hover:from-white/10 hover:to-white/15 transition-all duration-300"
+              whileHover={{ scale: 1.02, y: -2 }}
+              whileTap={{ scale: 0.98 }}
+            >
+              <div className="p-2 rounded-lg bg-white/10 group-hover:bg-white/20 transition-all duration-300">
+                <Download size={18} />
+              </div>
+              <div className="text-left">
+                <p className="font-semibold text-sm">Export PDF</p>
+                <p className="text-xs opacity-70">Download copy</p>
+              </div>
+            </motion.button>
+            
+            <motion.button
+              onClick={handleShareItinerary}
+              className="flex-1 group flex items-center space-x-3 p-4 rounded-xl bg-gradient-to-br from-white/5 to-white/10 border border-white/20 text-white hover:border-white/30 hover:from-white/10 hover:to-white/15 transition-all duration-300"
+              whileHover={{ scale: 1.02, y: -2 }}
+              whileTap={{ scale: 0.98 }}
+            >
+              <div className="p-2 rounded-lg bg-white/10 group-hover:bg-white/20 transition-all duration-300">
+                <Share2 size={18} />
+              </div>
+              <div className="text-left">
+                <p className="font-semibold text-sm">Share Trip</p>
+                <p className="text-xs opacity-70">Send to friends</p>
+              </div>
+            </motion.button>
           </div>
         </div>
       </motion.div>
 
-      {/* Global Flight Booking CTA */}
-      {showFlightCTA && (
-        <div className="bg-blue-600/10 border border-blue-500/30 rounded-lg p-4 mb-8 flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <div className="bg-blue-500/20 p-2 rounded">
-              <Plane className="text-blue-300" size={18} />
-            </div>
-            <div>
-              <div className="text-sm text-blue-200 font-medium">Save more on flights with EaseMyTrip</div>
-              <div className="text-xs text-blue-300">Get better discounts and deals for your trip.</div>
-            </div>
-          </div>
-          <a
-            href={easeMyTripUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-medium"
-          >
-            Book Flights
-          </a>
-        </div>
+
+      {/* Interactive Map */}
+      {showMap && (
+        <motion.div
+          variants={fadeInUp}
+          initial="initial"
+          animate="animate"
+          className="bg-black rounded-xl p-4 sm:p-6 mb-6 border border-white/10 overflow-hidden"
+        >
+          <h3 className="text-lg sm:text-xl font-semibold text-white mb-4">Interactive Map</h3>
+          <InteractiveMap
+            itinerary={editableItinerary}
+            tripDetails={tripDetails}
+            onLocationUpdate={handleLocationUpdate}
+          />
+        </motion.div>
       )}
 
       {/* Live Constraints */}
@@ -337,37 +534,37 @@ const ItineraryDisplay = ({ itinerary, tripDetails, onSave, onExport, onShare })
         variants={fadeInUp}
         initial="initial"
         animate="animate"
-        className="bg-black rounded-2xl p-6 text-white mb-8 border border-white/10"
+        className="bg-black rounded-xl p-4 sm:p-6 text-white mb-6 border border-white/10 overflow-hidden"
       >
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-xl font-semibold">Live Updates</h3>
+          <h3 className="text-lg sm:text-xl font-semibold">Live Updates</h3>
           {constraintsLoading && <LoadingSpinner size={20} text="" />}
         </div>
         {!constraintsLoading && constraintsError && (
-          <p className="text-red-300">{constraintsError}</p>
+          <p className="text-red-300 text-sm sm:text-base">{constraintsError}</p>
         )}
         {!constraintsLoading && constraints && (
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {constraints.days.map((d) => (
-              <div key={d.day} className="bg-white/5 rounded-lg p-6">
-                <div className="flex items-center justify-between gap-4 mb-2">
-                  <span className="text-white/80 font-medium whitespace-nowrap">Day {d.day}</span>
+              <div key={d.day} className="bg-white/5 rounded-lg p-4 sm:p-6">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+                  <span className="text-white/80 font-medium text-sm sm:text-base">Day {d.day}</span>
                   {d.weather && (
-                    <div className="flex items-center text-white/70 text-sm md:text-base min-w-0">
+                    <div className="flex items-center text-white/70 text-xs sm:text-sm min-w-0">
                       <WeatherIcon weather={d.weather} />
-                      <span className="truncate">
+                      <span className="truncate ml-2">
                         {d.weather.summary} • {d.weather.low_c}–{d.weather.high_c}°C • {d.weather.precip_prob}% rain
                       </span>
                     </div>
                   )}
                 </div>
                 {d.events && d.events.length > 0 && (
-                  <div className="text-white/70 text-sm">
+                  <div className="text-white/70 text-xs sm:text-sm break-words">
                     <span className="font-medium">Events:</span> {d.events.map(e => e.name).join(', ')}
                   </div>
                 )}
                 {d.alerts && d.alerts.length > 0 && (
-                  <div className="text-red-300 text-sm mt-1">
+                  <div className="text-red-300 text-xs sm:text-sm mt-2 break-words">
                     <span className="font-medium">Alerts:</span> {d.alerts.join(', ')}
                   </div>
                 )}
@@ -382,22 +579,22 @@ const ItineraryDisplay = ({ itinerary, tripDetails, onSave, onExport, onShare })
         variants={staggerContainer}
         initial="initial"
         animate="animate"
-        className="space-y-6"
+        className="space-y-4"
       >
         {editableItinerary.map((day, dayIndex) => (
           <motion.div
             key={dayIndex}
             variants={fadeInUp}
-            className="bg-black rounded-2xl border border-white/10 overflow-hidden"
+            className="bg-black rounded-xl border border-white/10 overflow-hidden mb-4"
           >
             {/* Day Header */}
-            <div className="bg-black p-6 border-b border-white/10">
-              <div className="flex justify-between items-center">
-                <div className="flex items-center space-x-4">
-                  <div className="bg-white text-black w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg">
+            <div className="bg-black p-4 sm:p-6 border-b border-white/10">
+              <div className="flex flex-col lg:flex-row lg:justify-between lg:items-center gap-4">
+                <div className="flex items-center space-x-3 sm:space-x-4 min-w-0 flex-1">
+                  <div className="bg-white text-black w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center font-bold text-base sm:text-lg flex-shrink-0">
                     {day.day}
                   </div>
-                  <div>
+                  <div className="min-w-0 flex-1">
                     {editingDay === dayIndex ? (
                       <EditDayForm
                         day={day}
@@ -406,40 +603,56 @@ const ItineraryDisplay = ({ itinerary, tripDetails, onSave, onExport, onShare })
                       />
                     ) : (
                       <>
-                        <h3 className="text-2xl font-semibold text-white">{day.title}</h3>
-                        <p className="text-white/60">Day {day.day} of your adventure</p>
+                        <h3 className="text-lg sm:text-xl lg:text-2xl font-semibold text-white truncate">{day.title}</h3>
+                        <div className="flex items-center justify-between">
+                          <p className="text-white/60 text-sm sm:text-base">Day {day.day} of your adventure</p>
+                          {getDailyCostSummary(day) && (
+                            <div className="flex items-center space-x-1 bg-green-500/10 px-2 py-1 rounded-md border border-green-500/20">
+                              <span className="text-green-400 font-medium text-xs">
+                                {getDailyCostSummary(day).map(cost => {
+                                  // Ensure no duplicate currency symbols
+                                  const symbol = cost.symbol;
+                                  const amount = cost.total.toString();
+                                  return `${symbol}${amount}`;
+                                }).join(', ')}
+                              </span>
+                            </div>
+                          )}
+                        </div>
                       </>
                     )}
                   </div>
                 </div>
-                <div className="flex space-x-2">
+                <div className="flex flex-wrap gap-2 lg:flex-nowrap">
                   <motion.button
                     onClick={() => handleEditDay(dayIndex)}
-                    className="bg-white/10 hover:bg-white/20 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors"
+                    className="bg-white/10 hover:bg-white/20 text-white px-3 py-2 rounded-lg flex items-center space-x-1.5 transition-colors text-sm"
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
                   >
-                    <Edit3 size={16} />
-                    <span>{editingDay === dayIndex ? 'Cancel' : 'Edit Day'}</span>
+                    <Edit3 size={14} />
+                    <span className="hidden sm:inline">{editingDay === dayIndex ? 'Cancel' : 'Edit Day'}</span>
+                    <span className="sm:hidden">{editingDay === dayIndex ? 'Cancel' : 'Edit'}</span>
                   </motion.button>
                   <motion.button
                     onClick={() => toggleAddActivity(dayIndex)}
-                    className="bg-green-100 hover:bg-green-200 text-green-600 px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors"
+                    className="bg-green-100 hover:bg-green-200 text-green-600 px-3 py-2 rounded-lg flex items-center space-x-1.5 transition-colors text-sm"
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
                   >
-                    <Plus size={16} />
-                    <span>Add Activity</span>
+                    <Plus size={14} />
+                    <span className="hidden sm:inline">Add Activity</span>
+                    <span className="sm:hidden">Add</span>
                   </motion.button>
                 </div>
               </div>
             </div>
 
             {/* Activities */}
-            <div className="p-6">
-              <div className="space-y-5">
+            <div className="p-4 sm:p-6">
+              <div className="space-y-4">
                 {day.activities.map((activity, activityIndex) => (
-              <div key={activityIndex} className="bg-white/5 rounded-lg p-5">
+                  <div key={activityIndex} className="bg-white/5 rounded-lg p-4 sm:p-5">
                     {editingActivity?.dayIndex === dayIndex && editingActivity?.activityIndex === activityIndex ? (
                       <EditActivityForm
                         activity={activity}
@@ -447,39 +660,41 @@ const ItineraryDisplay = ({ itinerary, tripDetails, onSave, onExport, onShare })
                         onCancel={() => setEditingActivity(null)}
                       />
                     ) : (
-                      <div className="flex justify-between items-start">
-                        <div className="flex items-start space-x-6 flex-1">
-                          {/* Activity Image */}
+                      <div className="flex flex-col sm:flex-row sm:items-start gap-4">
+                        {/* Activity Image */}
+                        <div className="flex-shrink-0">
                           <ActivityThumbnail name={activity.name} destination={tripDetails?.destination} />
-                          {/* Text */}
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center space-x-3 mb-2">
-                              <h4 className="font-semibold text-white text-lg">{activity.name}</h4>
+                        </div>
+                        
+                        {/* Text Content */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-start justify-between gap-2 mb-2">
+                            <h4 className="font-semibold text-white text-base sm:text-lg leading-tight break-words">{activity.name}</h4>
+                            <div className="flex items-center space-x-1 flex-shrink-0">
                               <motion.button
                                 onClick={() => handleEditActivity(dayIndex, activityIndex)}
-                                className="text-white/80 hover:text-white p-1"
+                                className="text-white/80 hover:text-white p-1.5 rounded hover:bg-white/10 transition-colors"
                                 whileHover={{ scale: 1.1 }}
                               >
-                                <Edit3 size={16} />
+                                <Edit3 size={14} />
                               </motion.button>
                               <motion.button
                                 onClick={() => handleDeleteActivity(dayIndex, activityIndex)}
-                                className="text-red-600 hover:text-red-700 p-1"
+                                className="text-red-600 hover:text-red-700 p-1.5 rounded hover:bg-red-500/10 transition-colors"
                                 whileHover={{ scale: 1.1 }}
                               >
-                                <Trash2 size={16} />
+                                <Trash2 size={14} />
                               </motion.button>
                             </div>
-                            <p className="text-white/70 mb-2">{activity.description}</p>
-                            {activity.estimated_cost && (
-                              <div className="flex items-center space-x-2">
-                                <DollarSign size={16} className="text-green-600" />
-                                <span className="text-green-600 font-medium">
-                                  {formatCostPlain(activity.estimated_cost)}
-                                </span>
-                              </div>
-                            )}
                           </div>
+                          <p className="text-white/70 mb-3 text-sm sm:text-base leading-relaxed break-words">{activity.description}</p>
+                          {activity.estimated_cost && (
+                            <div className="flex items-center space-x-1">
+                              <span className="text-green-400 font-medium text-sm">
+                                {formatCost(activity.estimated_cost).symbol}{formatCost(activity.estimated_cost).amount}
+                              </span>
+                            </div>
+                          )}
                         </div>
                       </div>
                     )}
@@ -494,37 +709,37 @@ const ItineraryDisplay = ({ itinerary, tripDetails, onSave, onExport, onShare })
                     exit={{ opacity: 0, height: 0 }}
                     className="bg-white/5 border-2 border-dashed border-white/20 rounded-lg p-4"
                   >
-                    <h5 className="font-semibold text-white mb-3">Add New Activity</h5>
+                    <h5 className="font-semibold text-white mb-3 text-sm sm:text-base">Add New Activity</h5>
                     <div className="space-y-3">
                       <input
                         type="text"
                         placeholder="Activity name"
                         value={newActivity.name}
                         onChange={(e) => setNewActivity({ ...newActivity, name: e.target.value })}
-                        className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/50 focus:ring-2 focus:ring-white/50 focus:border-white/50"
+                        className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/50 focus:ring-2 focus:ring-white/50 focus:border-white/50 text-sm sm:text-base"
                       />
-                      <input
-                        type="text"
+                      <textarea
                         placeholder="Description"
                         value={newActivity.description}
                         onChange={(e) => setNewActivity({ ...newActivity, description: e.target.value })}
-                        className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/50 focus:ring-2 focus:ring-white/50 focus:border-white/50"
+                        rows={3}
+                        className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/50 focus:ring-2 focus:ring-white/50 focus:border-white/50 text-sm sm:text-base resize-none"
                       />
                       <input
                         type="text"
                         placeholder="Estimated cost (optional)"
                         value={newActivity.estimated_cost}
                         onChange={(e) => setNewActivity({ ...newActivity, estimated_cost: e.target.value })}
-                        className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/50 focus:ring-2 focus:ring-white/50 focus:border-white/50"
+                        className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/50 focus:ring-2 focus:ring-white/50 focus:border-white/50 text-sm sm:text-base"
                       />
-                      <div className="flex space-x-2">
+                      <div className="flex flex-wrap gap-2">
                         <motion.button
                           onClick={() => handleAddActivity(dayIndex)}
-                          className="bg-white text-black hover:bg-white/90 px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors"
+                          className="bg-white text-black hover:bg-white/90 px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors text-sm"
                           whileHover={{ scale: 1.05 }}
                           whileTap={{ scale: 0.95 }}
                         >
-                          <Plus size={16} />
+                          <Plus size={14} />
                           <span>Add Activity</span>
                         </motion.button>
                         <motion.button
@@ -545,6 +760,23 @@ const ItineraryDisplay = ({ itinerary, tripDetails, onSave, onExport, onShare })
           </motion.div>
         ))}
       </motion.div>
+
+      {/* Toast Notification */}
+      {showToast && (
+        <motion.div
+          initial={{ opacity: 0, y: 50, scale: 0.3 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: 50, scale: 0.3 }}
+          className="fixed bottom-6 right-6 z-50 bg-green-500 text-white px-6 py-4 rounded-lg shadow-lg border border-green-400/30 flex items-center space-x-3"
+        >
+          <div className="w-6 h-6 bg-green-400 rounded-full flex items-center justify-center">
+            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+            </svg>
+          </div>
+          <span className="font-medium">{toastMessage}</span>
+        </motion.div>
+      )}
     </div>
   );
 };

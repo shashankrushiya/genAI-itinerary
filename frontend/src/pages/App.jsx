@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, MapPin, Calendar, DollarSign, Heart, CheckCircle, Download, Share } from 'lucide-react';
+import { ArrowLeft, MapPin, Calendar, DollarSign, Heart, CheckCircle, Download, Share, Globe } from 'lucide-react';
 import LoadingSpinner from '../components/LoadingSpinner';
 import ItineraryDisplay from '../components/ItineraryDisplay';
 import Dashboard from '../components/Dashboard';
+import TripLibrary from '../components/TripLibrary';
 import { auth } from '../firebase';
-import { generateItinerary, APIError, getUserData } from '../lib/api';
+import { generateItinerary, APIError, getUserData, updateItinerary } from '../lib/api';
 import { exportToPDF, shareItinerary } from '../lib/exportUtils';
 import { isSessionExpired, startSession, clearSession } from '../lib/session';
 import { fadeInUp, staggerContainer } from '../lib/motion';
@@ -18,13 +19,18 @@ const App = () => {
     destination: '',
     duration: '',
     budget: '',
-    interests: ''
+    interests: '',
+    startDate: '',
+    endDate: '',
+    travelStyle: '',
+    isPublic: false
   });
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
   const [showItinerary, setShowItinerary] = useState(false);
   const [showDashboard, setShowDashboard] = useState(true);
+  const [showTripLibrary, setShowTripLibrary] = useState(false);
   const [selectedTrip, setSelectedTrip] = useState(null);
   const interestSuggestions = ['culture', 'food', 'nature', 'history', 'art', 'shopping', 'nightlife', 'adventure', 'museums', 'parks'];
   const navigate = useNavigate();
@@ -60,10 +66,23 @@ const App = () => {
   }, [navigate]);
 
   const handleInputChange = (e) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value
-    });
+    const { name, value } = e.target;
+    let updatedFormData = { ...formData, [name]: value };
+    
+    // Auto-calculate end date when start date or duration changes
+    if (name === 'startDate' && formData.duration) {
+      const startDate = new Date(value);
+      const endDate = new Date(startDate);
+      endDate.setDate(startDate.getDate() + parseInt(formData.duration) - 1);
+      updatedFormData.endDate = endDate.toISOString().split('T')[0];
+    } else if (name === 'duration' && formData.startDate) {
+      const startDate = new Date(formData.startDate);
+      const endDate = new Date(startDate);
+      endDate.setDate(startDate.getDate() + parseInt(value) - 1);
+      updatedFormData.endDate = endDate.toISOString().split('T')[0];
+    }
+    
+    setFormData(updatedFormData);
     setError('');
   };
 
@@ -95,7 +114,11 @@ const App = () => {
         destination: formData.destination,
         duration: parseInt(formData.duration),
         budget: formData.budget,
-        interests: interestsList
+        interests: interestsList,
+        start_date: formData.startDate,
+        end_date: formData.endDate,
+        travel_style: formData.travelStyle,
+        is_public: formData.isPublic
       }, token);
 
       setResult(response);
@@ -121,11 +144,23 @@ const App = () => {
     }
   };
 
-  const handleSaveItinerary = (updatedItinerary) => {
-    // Here you could save the updated itinerary to the backend
-    console.log('Saving updated itinerary:', updatedItinerary);
-    // For now, just update the local state
-    setResult({ ...result, itinerary: updatedItinerary });
+  const handleSaveItinerary = async (updatedItinerary) => {
+    try {
+      if (!result?.trip_id) {
+        console.error('No trip ID available for saving');
+        return;
+      }
+      
+      const token = await user.getIdToken();
+      await updateItinerary(result.trip_id, { itinerary: updatedItinerary }, token);
+      
+      // Update the local state
+      setResult({ ...result, itinerary: updatedItinerary });
+      console.log('Itinerary saved successfully');
+    } catch (error) {
+      console.error('Error saving itinerary:', error);
+      // The toast will be shown by the ItineraryDisplay component
+    }
   };
 
   const handleExportPDF = (itinerary, tripDetails) => {
@@ -173,8 +208,20 @@ const App = () => {
   const handleBackToDashboard = () => {
     setShowDashboard(true);
     setShowItinerary(false);
-    setResult(null);
+    setShowTripLibrary(false);
     setSelectedTrip(null);
+    setResult(null);
+  };
+
+  const handleOpenTripLibrary = () => {
+    setShowTripLibrary(true);
+    setShowDashboard(false);
+    setShowItinerary(false);
+  };
+
+  const handleBackFromTripLibrary = () => {
+    setShowTripLibrary(false);
+    setShowDashboard(true);
   };
 
   if (!user) {
@@ -238,6 +285,12 @@ const App = () => {
           onViewTrip={handleViewTrip}
           onEditTrip={handleEditTrip}
           onDeleteTrip={handleDeleteTrip}
+          onOpenTripLibrary={handleOpenTripLibrary}
+        />
+      ) : showTripLibrary ? (
+        <TripLibrary
+          onBack={handleBackFromTripLibrary}
+          onViewTrip={handleViewTrip}
         />
       ) : (
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
@@ -260,8 +313,9 @@ const App = () => {
           {/* Form */}
           <motion.div variants={fadeInUp} className="bg-black rounded-2xl border border-white/10 p-8">
             <form onSubmit={handleSubmit} className="space-y-6">
-              <div className="grid md:grid-cols-2 gap-6">
-                <div>
+              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {/* First row - 3 columns */}
+                <div className="md:col-span-1 lg:col-span-1">
                   <label className="block text-sm font-medium text-white/80 mb-2">
                     <MapPin className="inline mr-2" size={16} />
                     Destination
@@ -277,7 +331,7 @@ const App = () => {
                   />
                 </div>
 
-                <div>
+                <div className="md:col-span-1 lg:col-span-1">
                   <label className="block text-sm font-medium text-white/80 mb-2">
                     <Calendar className="inline mr-2" size={16} />
                     Duration (days)
@@ -295,7 +349,7 @@ const App = () => {
                   />
                 </div>
 
-                <div>
+                <div className="md:col-span-2 lg:col-span-1">
                   <label className="block text-sm font-medium text-white/80 mb-2">
                     <DollarSign className="inline mr-2" size={16} />
                     Budget
@@ -314,7 +368,71 @@ const App = () => {
                   </select>
                 </div>
 
-                <div>
+                {/* Second row - 2 columns for dates */}
+                <div className="md:col-span-1 lg:col-span-1">
+                  <label className="block text-sm font-medium text-white/80 mb-2">
+                    <Calendar className="inline mr-2" size={16} />
+                    Start Date
+                  </label>
+                  <input
+                    type="date"
+                    name="startDate"
+                    value={formData.startDate}
+                    onChange={handleInputChange}
+                    className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/50 focus:ring-2 focus:ring-white/50 focus:border-white/50"
+                    min={new Date().toISOString().split('T')[0]}
+                    required
+                  />
+                </div>
+
+                <div className="md:col-span-1 lg:col-span-1">
+                  <label className="block text-sm font-medium text-white/80 mb-2">
+                    <Calendar className="inline mr-2" size={16} />
+                    End Date
+                  </label>
+                  <input
+                    type="date"
+                    name="endDate"
+                    value={formData.endDate}
+                    onChange={handleInputChange}
+                    className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/50 focus:ring-2 focus:ring-white/50 focus:border-white/50"
+                    min={formData.startDate || new Date().toISOString().split('T')[0]}
+                    required
+                  />
+                  <p className="text-sm text-gray-500 mt-1">
+                    Automatically calculated based on start date and duration
+                  </p>
+                </div>
+
+                <div className="md:col-span-2 lg:col-span-1">
+                  <label className="block text-sm font-medium text-white/80 mb-2">
+                    <Heart className="inline mr-2" size={16} />
+                    Travel Style
+                  </label>
+                  <select
+                    name="travelStyle"
+                    value={formData.travelStyle}
+                    onChange={handleInputChange}
+                    className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/50 focus:ring-2 focus:ring-white/50 focus:border-white/50"
+                    required
+                  >
+                    <option value="">Select travel style</option>
+                    <option value="Relaxation">Relaxation</option>
+                    <option value="Cultural and Historical">Cultural and Historical</option>
+                    <option value="Romantic for Couples">Romantic for Couples</option>
+                    <option value="Family-Friendly">Family-Friendly</option>
+                    <option value="Adventure and Outdoor">Adventure and Outdoor</option>
+                    <option value="Food and Culinary">Food and Culinary</option>
+                    <option value="Nightlife and Entertainment">Nightlife and Entertainment</option>
+                    <option value="Shopping and Markets">Shopping and Markets</option>
+                    <option value="Nature and Wildlife">Nature and Wildlife</option>
+                    <option value="Art and Museums">Art and Museums</option>
+                    <option value="Business and Professional">Business and Professional</option>
+                  </select>
+                </div>
+
+                {/* Third row - Full width for interests */}
+                <div className="md:col-span-2 lg:col-span-3">
                   <label className="block text-sm font-medium text-white/80 mb-2">
                     <Heart className="inline mr-2" size={16} />
                     Interests
@@ -327,11 +445,8 @@ const App = () => {
                     className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/50 focus:ring-2 focus:ring-white/50 focus:border-white/50"
                     placeholder="e.g., culture, food, nature, history (optional)"
                   />
-                  <p className="text-sm text-gray-500 mt-1">
-                    Separate multiple interests with commas
-                  </p>
-                  {/* Suggestions */}
-                  <div className="mt-3 flex flex-wrap gap-2">
+                  {/* Compact Suggestions */}
+                  <div className="mt-2 flex flex-wrap gap-1.5">
                     {interestSuggestions.map((s) => {
                       const selected = getInterestsArray().includes(s);
                       return (
@@ -339,7 +454,7 @@ const App = () => {
                           key={s}
                           type="button"
                           onClick={() => toggleInterest(s)}
-                          className={`${selected ? 'bg-white text-black' : 'bg-white/10 text-white'} px-3 py-1 rounded-full text-sm border border-white/20 hover:border-white/40 transition-colors`}
+                          className={`${selected ? 'bg-white text-black' : 'bg-white/10 text-white'} px-2 py-1 rounded text-xs border border-white/20 hover:border-white/40 transition-colors`}
                         >
                           {s}
                         </button>
@@ -347,6 +462,29 @@ const App = () => {
                     })}
                   </div>
                 </div>
+              </div>
+
+              {/* Public/Private Toggle */}
+              <div className="flex items-center justify-between p-4 bg-white/5 rounded-lg border border-white/10">
+                <div className="flex items-center space-x-3">
+                  <div className="p-2 rounded-lg bg-gradient-to-br from-blue-500/20 to-blue-600/20">
+                    <Globe size={20} className="text-blue-300" />
+                  </div>
+                  <div>
+                    <h3 className="text-white font-medium">Share with Community</h3>
+                    <p className="text-white/60 text-sm">Make this itinerary public in the Trip Library</p>
+                  </div>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    name="isPublic"
+                    checked={formData.isPublic}
+                    onChange={(e) => setFormData({ ...formData, isPublic: e.target.checked })}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-white/20 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-white/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-white"></div>
+                </label>
               </div>
 
               {error && (

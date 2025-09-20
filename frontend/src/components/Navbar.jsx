@@ -30,6 +30,9 @@ const Navbar = ({ onSignInClick, onSignUpClick, user, onSignOut }) => {
             <a href="#demo" className="text-white/70 hover:text-white transition-colors">
               Demo
             </a>
+            <a href="/trip-library" className="text-white/70 hover:text-white transition-colors">
+              Trip Library
+            </a>
             {user && (
               <a href="/app" className="text-white/70 hover:text-white transition-colors">
                 My Itineraries
@@ -105,6 +108,9 @@ const Navbar = ({ onSignInClick, onSignUpClick, user, onSignOut }) => {
               </a>
               <a href="#demo" className="text-gray-600 hover:text-primary-600 transition-colors">
                 Demo
+              </a>
+              <a href="/trip-library" className="text-gray-600 hover:text-primary-600 transition-colors">
+                Trip Library
               </a>
               
               {user ? (
