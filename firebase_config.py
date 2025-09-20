@@ -1,12 +1,15 @@
+import os
+import json
 import firebase_admin
 from firebase_admin import credentials, firestore
 
 # Path to your downloaded service account key
-CREDENTIALS_PATH = "./service-account-key.json"
+firebase_credentials = os.getenv("FIREBASE_SERVICE_ACCOUNT")
 
 # Initialize the app with a service account
 try:
-    cred = credentials.Certificate(CREDENTIALS_PATH)
+    cred_dict = json.loads(firebase_credentials)
+    cred = credentials.Certificate(cred_dict)
     firebase_admin.initialize_app(cred)
     print("Firebase Admin SDK initialized successfully.")
 except Exception as e:
