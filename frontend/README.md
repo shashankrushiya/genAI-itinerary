@@ -1,70 +1,219 @@
-# Getting Started with Create React App
+#  GenItinerary Frontend
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+This is the React frontend application for GenItinerary - an AI-powered travel itinerary planner.
 
-## Available Scripts
+##  Quick Start
 
-In the project directory, you can run:
+### Prerequisites
+- Node.js 16+ and npm
+- Firebase project with Authentication enabled
+- Google Maps API key
 
-### `npm start`
+### Installation
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+1. **Install dependencies**
+   ```bash
+   npm install
+   ```
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+2. **Configure Firebase**
+   ```bash
+   cp src/firebase.example.js src/firebase.js
+   # Edit firebase.js with your Firebase config
+   ```
 
-### `npm test`
+3. **Start development server**
+   ```bash
+   npm start
+   ```
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+4. **Access the application**
+   - Open http://localhost:3000
 
-### `npm run build`
+##  Architecture
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+### Components Structure
+```
+src/
+├── components/           # Reusable UI components
+│   ├── Auth.js          # Authentication components
+│   ├── Dashboard.jsx    # User dashboard
+│   ├── ItineraryDisplay.jsx  # Itinerary viewer/editor
+│   ├── TripPlanner.js   # Trip creation form
+│   ├── TripLibrary.jsx  # Public trip browser
+│   └── InteractiveMap.jsx # Google Maps integration
+├── pages/               # Main application pages
+│   ├── Landing.jsx     # Landing page
+│   ├── App.jsx         # Main app page
+│   ├── Demo.jsx        # Demo page
+│   └── TripLibraryPage.jsx # Trip library page
+├── lib/                # Utility functions
+│   ├── api.js          # API communication
+│   └── motion.js       # Animation variants
+└── App.js              # Main application component
+```
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+### Key Features
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+#### Modern UI Design
+- **Dark Theme**: Professional black theme with luxury accents
+- **Responsive**: Mobile-first design with Tailwind CSS
+- **Animations**: Smooth transitions with Framer Motion
+- **Accessibility**: WCAG compliant components
 
-### `npm run eject`
+#### Authentication
+- **Firebase Auth**: Secure user authentication
+- **Social Login**: Google and email/password options
+- **Protected Routes**: Secure access to user features
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+#### Interactive Maps
+- **Google Maps**: Visual itinerary representation
+- **Route Planning**: Smart path optimization
+- **Location Markers**: Activity pinpoints
+- **Real-time Updates**: Dynamic map updates
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+#### Responsive Design
+- **Mobile-First**: Optimized for all screen sizes
+- **Touch-Friendly**: Gesture support for mobile
+- **Progressive Web App**: Installable on devices
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+## 🛠️ Development
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+### Available Scripts
 
-## Learn More
+```bash
+# Start development server
+npm start
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+# Run tests
+npm test
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+# Build for production
+npm run build
 
-### Code Splitting
+# Analyze bundle size
+npm run analyze
+```
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
+### Code Style
+- **ESLint**: Code linting and formatting
+- **Prettier**: Code formatting
+- **React Hooks**: Modern functional components
+- **Tailwind CSS**: Utility-first styling
 
-### Analyzing the Bundle Size
+### State Management
+- **React Context**: Global state management
+- **useState/useEffect**: Local component state
+- **Custom Hooks**: Reusable state logic
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
+## 🔧 Configuration
 
-### Making a Progressive Web App
+### Firebase Setup
+1. Create a Firebase project
+2. Enable Authentication
+3. Add your config to `src/firebase.js`:
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
+```javascript
+const firebaseConfig = {
+  apiKey: "your-api-key",
+  authDomain: "your-project.firebaseapp.com",
+  projectId: "your-project-id",
+  storageBucket: "your-project.appspot.com",
+  messagingSenderId: "123456789",
+  appId: "your-app-id"
+};
+```
 
-### Advanced Configuration
+### Environment Variables
+Create a `.env` file in the frontend directory:
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
+```env
+REACT_APP_API_BASE_URL=http://localhost:8000
+REACT_APP_GOOGLE_MAPS_API_KEY=your-maps-api-key
+REACT_APP_FIREBASE_API_KEY=your-firebase-api-key
+REACT_APP_FIREBASE_AUTH_DOMAIN=your-project.firebaseapp.com
+REACT_APP_FIREBASE_PROJECT_ID=your-project-id
+```
 
-### Deployment
+## Dependencies
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
+### Core Dependencies
+- **React 18**: UI framework
+- **React Router**: Client-side routing
+- **Firebase**: Authentication and database
+- **Tailwind CSS**: Styling framework
+- **Framer Motion**: Animation library
 
-### `npm run build` fails to minify
+### Development Dependencies
+- **ESLint**: Code linting
+- **Prettier**: Code formatting
+- **Jest**: Testing framework
+- **React Testing Library**: Component testing
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+## Deployment
+
+### Build for Production
+```bash
+npm run build
+```
+
+### Deploy to Vercel
+```bash
+# Install Vercel CLI
+npm i -g vercel
+
+# Deploy
+vercel
+```
+
+### Deploy to Netlify
+```bash
+# Build the project
+npm run build
+
+# Deploy the build folder to Netlify
+```
+
+### Environment Variables for Production
+Set these in your hosting platform:
+- `REACT_APP_API_BASE_URL`: Backend API URL
+- `REACT_APP_GOOGLE_MAPS_API_KEY`: Google Maps API key
+- Firebase configuration variables
+
+## Troubleshooting
+
+### Common Issues
+
+#### Firebase Authentication
+- Verify Firebase configuration
+- Check authentication rules
+- Ensure proper CORS settings
+
+#### Google Maps Integration
+- Verify API key and restrictions
+- Check billing account status
+- Ensure proper domain configuration
+
+#### Build Issues
+- Clear node_modules and reinstall
+- Check for version conflicts
+- Verify environment variables
+
+### Debug Mode
+Enable debug logging:
+```javascript
+// In src/lib/api.js
+const DEBUG = process.env.NODE_ENV === 'development';
+```
+
+## 📚 Resources
+
+- [React Documentation](https://reactjs.org/docs)
+- [Tailwind CSS](https://tailwindcss.com/docs)
+- [Framer Motion](https://www.framer.com/motion/)
+- [Firebase Auth](https://firebase.google.com/docs/auth)
+- [Google Maps API](https://developers.google.com/maps/documentation)
+
+---
+
+**Happy coding!**
