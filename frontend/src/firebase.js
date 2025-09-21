@@ -5,7 +5,7 @@ import { getAuth } from "firebase/auth";
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
-    apiKey: "AIzaSyCn5bch3kbtD3je7rTyp3Dcp90DpGaZo44",
+    apiKey: process.env.FIREBASE_API_KEY,
     authDomain: "gen-itinerary.firebaseapp.com",
     projectId: "gen-itinerary",
     storageBucket: "gen-itinerary.firebasestorage.app",
