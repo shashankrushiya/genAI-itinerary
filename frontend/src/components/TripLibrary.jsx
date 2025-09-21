@@ -29,10 +29,6 @@ const TripLibrary = ({ onBack, onViewTrip }) => {
   });
   const [searchQuery, setSearchQuery] = useState('');
 
-  useEffect(() => {
-    fetchPublicTrips();
-  }, [fetchPublicTrips]);
-
   const fetchPublicTrips = useCallback(async () => {
     try {
       setLoading(true);
@@ -45,6 +41,10 @@ const TripLibrary = ({ onBack, onViewTrip }) => {
       setLoading(false);
     }
   }, [filters]);
+
+  useEffect(() => {
+    fetchPublicTrips();
+  }, [fetchPublicTrips]);
 
   const handleViewTrip = async (trip) => {
     try {
